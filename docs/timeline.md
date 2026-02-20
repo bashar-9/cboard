@@ -28,6 +28,7 @@
 | 2026-02-20 | Phase 7 — UI Component Extraction | Modularized monolithic `page.tsx` into `<ShareInput />`, `<Header />`, `<BoardItemCard />` and `<IncomingFilesProgress />`. |
 | 2026-02-20 | Multi-File Payload | Refactored WebRTC network layer to transmit bundled "Posts" containing Text and multiple File blobs under a single parent Item ID. |
 | 2026-02-20 | Bug Fix | Resolved duplicate WebRTC connection initialization bug. Pushed network singletons outside React component scope to mitigate React Strict Mode remount issues. |
+| 2026-02-20 | Home Page Redesign | Masonry board layout (CSS columns), bottom-pinned Gemini-style input bar, Google Keep-style detail modal with text truncation, attachment downloads, and "Download All". New component: `ItemDetailModal.tsx`. |
 
 ## In Progress
 

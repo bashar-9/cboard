@@ -39,12 +39,15 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 
 ### Specifics
 - **Theme:** Clean, modern design (support for both Light and Dark modes). Consider a "glassmorphism" aesthetic for a premium feel.
+- **Layout:** Google Keep-style masonry board with CSS columns (`columns-1 sm:2 lg:3 xl:4`). Input bar pinned to bottom of viewport (Gemini-style).
+- **Cards:** Truncated at 280 chars with "View more" hint. Clicking any card opens a detail modal overlay (Google Keep-style) with full text, attachments, and download options.
 - **Interactions:** 
   - Smooth transitions (150-300ms) for all state changes.
   - Hover states on interactive elements without layout shifts.
+  - Copy/Delete actions appear as hover-only overlay on cards.
   - No emojis for UI elements; use crisp SVG icons (e.g., Lucide).
 - **Typography & Layout:** 
-  - Standardized max-width containers.
+  - Standardized max-width containers (`max-w-6xl` board, `max-w-3xl` input).
   - Generous padding and legible, accessible contrast ratios (minimum 4.5:1).
   - Clear, readable typography (e.g., Inter or a similar modern sans-serif).
 
@@ -55,13 +58,14 @@ src/
 ├── app/
 │   ├── globals.css           # Global Tailwind CSS and utilities
 │   ├── layout.tsx            # Root layout (Theme provider setup)
-│   └── page.tsx              # Main Board view (Orchestrator)
+│   └── page.tsx              # Main Board view (flex column, masonry grid)
 ├── components/
 │   ├── board/
-│   │   ├── BoardItemCard.tsx         # Renders individual chat/file items
-│   │   ├── Header.tsx                # App header & status
-│   │   ├── IncomingFilesProgress.tsx # File download UI
-│   │   └── ShareInput.tsx            # Drop zone & text input component
+│   │   ├── BoardItemCard.tsx         # Card with truncation + opens detail modal
+│   │   ├── Header.tsx                # App header & connection status
+│   │   ├── IncomingFilesProgress.tsx  # File download progress bars
+│   │   ├── ItemDetailModal.tsx        # Google Keep-style detail overlay
+│   │   └── ShareInput.tsx            # Bottom-pinned compact input bar
 │   └── ui/                   # Shadcn UI generic components
 ├── hooks/
 │   └── useBoardNetwork.ts    # WebRTC and Pusher networking logic
