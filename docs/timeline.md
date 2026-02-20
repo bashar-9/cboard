@@ -24,6 +24,10 @@
 | 2026-02-20 | UI/UX Level Up | Refactored UI entirely replacing standard layouts with `ui-ux-pro-max` premium styling (glassmorphism/framer-motion). |
 | 2026-02-20 | Deployment Preparation | Pushed repository to GitHub as CBoard |
 | 2026-02-20 | Phase 6 — File Transfers | Implemented File ArrayBuffer chunking natively over WebRTC DataChannels + Droppable UI + Object URL Previews. |
+| 2026-02-20 | Bug Fix | Tracked down WebRTC `InvalidStateError` race condition due to duplicate Pusher signaling messages and isolated states. Implemented serial promise dispatcher for WebRTC signalling. |
+| 2026-02-20 | Phase 7 — UI Component Extraction | Modularized monolithic `page.tsx` into `<ShareInput />`, `<Header />`, `<BoardItemCard />` and `<IncomingFilesProgress />`. |
+| 2026-02-20 | Multi-File Payload | Refactored WebRTC network layer to transmit bundled "Posts" containing Text and multiple File blobs under a single parent Item ID. |
+| 2026-02-20 | Bug Fix | Resolved duplicate WebRTC connection initialization bug. Pushed network singletons outside React component scope to mitigate React Strict Mode remount issues. |
 
 ## In Progress
 

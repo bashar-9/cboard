@@ -42,6 +42,7 @@ export class WebRTCManager {
 
         let makingOffer = false;
         let ignoreOffer = false;
+        let signalingChain = Promise.resolve();
 
         pc.onicecandidate = (event) => {
             if (event.candidate && this.onSignal) {
@@ -90,41 +91,50 @@ export class WebRTCManager {
 
         // Attach safe signal handler for this specific peer to handle stare/glare correctly
         (pc as ExtendedRTCPeerConnection)._safeSignalHandle = async (msg: SignalMessage) => {
-            try {
-                if (msg.type === 'offer' || msg.type === 'answer') {
-                    const isOffer = msg.type === 'offer';
+            signalingChain = signalingChain.then(async () => {
+                try {
+                    if (msg.type === 'offer' || msg.type === 'answer') {
+                        const desc = new RTCSessionDescription(msg.data as RTCSessionDescriptionInit);
+                        const isOffer = desc.type === 'offer';
 
-                    // Collision detection (glare)
-                    const offerCollision = isOffer && (makingOffer || pc.signalingState !== 'stable');
+                        // Collision detection (glare)
+                        const offerCollision = isOffer && (makingOffer || pc.signalingState !== 'stable');
 
-                    ignoreOffer = !polite && offerCollision;
-                    if (ignoreOffer) {
-                        return; // Polite peer drops their offer, we keep ours
-                    }
+                        ignoreOffer = !polite && offerCollision;
+                        if (ignoreOffer) {
+                            return; // Polite peer drops their offer, we keep ours
+                        }
 
-                    await pc.setRemoteDescription(new RTCSessionDescription(msg.data as RTCSessionDescriptionInit));
+                        // Ignore stray answers if we are not expecting one to prevent InvalidStateError
+                        if (desc.type === 'answer' && pc.signalingState !== 'have-local-offer') {
+                            return;
+                        }
 
-                    if (msg.type === 'offer') {
-                        await pc.setLocalDescription();
-                        this.onSignal?.({
-                            to: peerId,
-                            from: this.myId,
-                            type: 'answer',
-                            data: pc.localDescription
-                        });
-                    }
-                } else if (msg.type === 'candidate') {
-                    try {
-                        await pc.addIceCandidate(new RTCIceCandidate(msg.data as RTCIceCandidateInit));
-                    } catch (err) {
-                        if (!ignoreOffer) {
-                            console.error('Signal handling candidate error:', err);
+                        await pc.setRemoteDescription(desc);
+
+                        if (desc.type === 'offer') {
+                            await pc.setLocalDescription();
+                            this.onSignal?.({
+                                to: peerId,
+                                from: this.myId,
+                                type: 'answer',
+                                data: pc.localDescription
+                            });
+                        }
+                    } else if (msg.type === 'candidate') {
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(msg.data as RTCIceCandidateInit));
+                        } catch (err) {
+                            if (!ignoreOffer) {
+                                console.error('Signal handling candidate error:', err);
+                            }
                         }
                     }
+                } catch (err) {
+                    console.error("Error handling signal:", err);
                 }
-            } catch (err) {
-                console.error("Error handling signal:", err);
-            }
+            });
+            await signalingChain;
         };
     }
 

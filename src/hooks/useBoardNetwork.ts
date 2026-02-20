@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useBoardStore, SharedItem } from '@/store/useBoardStore';
 import { getPusherClient } from '@/lib/pusher';
 import { WebRTCManager, SignalMessage } from '@/lib/webrtc';
@@ -15,10 +15,12 @@ function generateId(): string {
     return id.padEnd(36, ' ').substring(0, 36);
 }
 
-export function useBoardNetwork() {
+// Module-level singletons to prevent strict-mode and multi-component re-initialization
+let webrtcInstance: WebRTCManager | null = null;
+let channelInstance: Channel | null = null;
+
+export function useBoardNetworkInit() {
     const store = useBoardStore();
-    const webrtcRef = useRef<WebRTCManager | null>(null);
-    const channelRef = useRef<Channel | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -42,7 +44,7 @@ export function useBoardNetwork() {
                 // Use the userId assigned by the server
                 const pusher = getPusherClient(userId);
                 const channel = pusher.subscribe(roomName) as any;
-                channelRef.current = channel;
+                channelInstance = channel;
 
                 channel.bind('pusher:subscription_succeeded', (members: any) => {
                     if (!isMounted) return;
@@ -53,7 +55,7 @@ export function useBoardNetwork() {
 
                     // Initialize WebRTC
                     const rtc = new WebRTCManager(myId);
-                    webrtcRef.current = rtc;
+                    webrtcInstance = rtc;
 
                     // Wire WebRTC signals back to Pusher to route to peers
                     rtc.onSignal = (msg) => {
@@ -176,25 +178,25 @@ export function useBoardNetwork() {
 
                 // 3. Handle New Member Joining
                 channel.bind('pusher:member_added', (member: any) => {
-                    if (!webrtcRef.current) return;
+                    if (!webrtcInstance) return;
                     const currentId = membersWaitIdFallback();
                     if (!currentId) return;
 
                     const isPolite = currentId > member.id;
                     store.addDebugLog(`Member joined: ${member.id}. Creating peer. Am I polite? ${isPolite}`);
-                    webrtcRef.current.createPeer(member.id, isPolite);
+                    webrtcInstance.createPeer(member.id, isPolite);
                 });
 
                 // 4. Handle Member Leaving
                 channel.bind('pusher:member_removed', (member: any) => {
                     store.addDebugLog(`Member left: ${member.id}`);
                     store.removePeer(member.id);
-                    webrtcRef.current?.removePeer(member.id);
+                    webrtcInstance?.removePeer(member.id);
                 });
 
                 // 5. Handle incoming WebRTC Signals via Pusher
                 channel.bind('client-webrtc-signal', (msg: SignalMessage) => {
-                    if (!webrtcRef.current) return;
+                    if (!webrtcInstance) return;
                     const currentId = membersWaitIdFallback();
 
                     if (msg.to !== currentId) {
@@ -203,9 +205,9 @@ export function useBoardNetwork() {
 
                     store.addDebugLog(`Received ${msg.type} signal from ${msg.from}`);
                     if (msg.type === 'offer') {
-                        webrtcRef.current.createPeer(msg.from, false);
+                        webrtcInstance.createPeer(msg.from, false);
                     }
-                    webrtcRef.current.handleSignal(msg);
+                    webrtcInstance.handleSignal(msg);
                 });
 
                 // Helper to grab ID safely in bindings
@@ -233,10 +235,10 @@ export function useBoardNetwork() {
         return () => {
             isMounted = false;
             clearInterval(cleanupInterval);
-            webrtcRef.current?.cleanup();
-            if (channelRef.current) {
-                channelRef.current.unbind_all();
-                channelRef.current.unsubscribe();
+            webrtcInstance?.cleanup();
+            if (channelInstance) {
+                channelInstance.unbind_all();
+                channelInstance.unsubscribe();
             }
             useBoardStore.getState().setConnectionState('disconnected');
             useBoardStore.getState().setMyId('');
@@ -331,8 +333,14 @@ export function useBoardNetwork() {
         }
     };
 
+    return { error };
+}
+
+export function useBoardNetwork() {
+    const store = useBoardStore();
+
     const sharePost = async (text: string, files: File[]) => {
-        if (!webrtcRef.current || !store.myId) return;
+        if (!webrtcInstance || !store.myId) return;
 
         const itemId = generateId();
         const attachments = files.map(f => ({
@@ -356,7 +364,7 @@ export function useBoardNetwork() {
         store.addItem(item);
 
         // Broadcast post structure
-        webrtcRef.current.broadcast(JSON.stringify({
+        webrtcInstance.broadcast(JSON.stringify({
             type: item.type,
             item: attachments.length > 0
                 ? { ...item, attachments: attachments.map(a => ({ ...a, fileData: undefined })) }
@@ -373,7 +381,7 @@ export function useBoardNetwork() {
                 const arrayBuffer = await file.arrayBuffer();
                 const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
 
-                webrtcRef.current.broadcast(JSON.stringify({
+                webrtcInstance.broadcast(JSON.stringify({
                     type: 'file-start',
                     fileId: attId,
                     itemId: itemId,
@@ -392,13 +400,13 @@ export function useBoardNetwork() {
                     message.set(idBytes, 0);
                     message.set(chunkData, 36);
 
-                    webrtcRef.current.broadcast(message.buffer);
+                    webrtcInstance.broadcast(message.buffer);
                     offset += CHUNK_SIZE;
 
                     await new Promise(r => setTimeout(r, 5)); // Throttle
                 }
 
-                webrtcRef.current.broadcast(JSON.stringify({ type: 'file-complete', fileId: attId, itemId }));
+                webrtcInstance.broadcast(JSON.stringify({ type: 'file-complete', fileId: attId, itemId }));
             } catch (err) {
                 console.error(`File sharing failed for ${file.name}`, err);
                 store.addDebugLog(`File sharing failed: ${err}`);
@@ -407,15 +415,15 @@ export function useBoardNetwork() {
     };
 
     const deleteItem = (itemId: string) => {
-        if (!webrtcRef.current || !store.myId) return;
+        if (!webrtcInstance || !store.myId) return;
 
         store.deleteItem(itemId);
 
-        webrtcRef.current.broadcast(JSON.stringify({
+        webrtcInstance.broadcast(JSON.stringify({
             type: 'delete',
             itemId
         }));
     };
 
-    return { error, sharePost, deleteItem };
+    return { sharePost, deleteItem };
 }
