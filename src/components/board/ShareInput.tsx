@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
 import { useBoardStore } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Send, Paperclip, Trash2, File as FileIcon } from 'lucide-react';
+import { Send, Paperclip, Trash2, File as FileIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -18,10 +17,22 @@ export function ShareInput() {
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Auto-resize textarea
+    const autoResize = useCallback(() => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+    }, []);
+
+    useEffect(() => {
+        autoResize();
+    }, [inputText, autoResize]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
-
         const validFiles = files.filter(file => {
             if (file.size > MAX_FILE_SIZE) {
                 toast.error(`File ${file.name} is too large. Max size is 50MB.`);
@@ -29,11 +40,9 @@ export function ShareInput() {
             }
             return true;
         });
-
         if (validFiles.length > 0) {
             setSelectedFiles(prev => [...prev, ...validFiles]);
         }
-
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -51,7 +60,6 @@ export function ShareInput() {
         e.preventDefault();
         setIsDragging(false);
         const files = Array.from(e.dataTransfer.files || []);
-
         const validFiles = files.filter(file => {
             if (file.size > MAX_FILE_SIZE) {
                 toast.error(`File ${file.name} is too large. Max size is 50MB.`);
@@ -59,7 +67,6 @@ export function ShareInput() {
             }
             return true;
         });
-
         if (validFiles.length > 0) {
             setSelectedFiles(prev => [...prev, ...validFiles]);
         }
@@ -67,12 +74,13 @@ export function ShareInput() {
 
     const handleShare = () => {
         if (!inputText.trim() && selectedFiles.length === 0) return;
-
-        // Use sharePost hook to dispatch event
         sharePost(inputText, selectedFiles);
-
         setInputText('');
         setSelectedFiles([]);
+        // Reset textarea height
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
     };
 
     const removeSelectedFile = (index: number) => {
@@ -80,23 +88,50 @@ export function ShareInput() {
     };
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
-            className="space-y-4"
+        <div
+            className="fixed bottom-0 inset-x-0 z-40 pointer-events-none"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
         >
-            <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition duration-700 pointer-events-none"></div>
-                <div
-                    className={`relative bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-[1.5rem] border ${isDragging ? 'border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/50 dark:bg-indigo-900/20' : 'border-slate-200/60 dark:border-slate-800/60'} shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] overflow-hidden flex flex-col focus-within:ring-2 focus-within:ring-indigo-500/50 dark:focus-within:ring-indigo-400/50 transition-all duration-300`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                >
-                    {/* Internal Glass Highlight */}
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 dark:via-white/10 to-transparent pointer-events-none" />
+            <div className="max-w-3xl mx-auto px-3 pb-4 pt-2 pointer-events-auto">
+                {/* File chips — above the bar */}
+                <AnimatePresence>
+                    {selectedFiles.length > 0 && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                            className="flex flex-wrap gap-2 mb-2"
+                        >
+                            {selectedFiles.map((file, index) => (
+                                <div
+                                    key={index}
+                                    className="flex items-center gap-1.5 bg-slate-800/90 dark:bg-slate-700/90 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium backdrop-blur-xl border border-slate-700/50 dark:border-slate-600/50"
+                                >
+                                    <FileIcon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                    <span className="truncate max-w-[120px]">{file.name}</span>
+                                    <span className="text-slate-400 text-[10px] shrink-0">{(file.size / 1024 / 1024).toFixed(1)}MB</span>
+                                    <button
+                                        onClick={() => removeSelectedFile(index)}
+                                        className="ml-0.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
+                {/* Input bar */}
+                <div
+                    className={`flex items-end gap-2 rounded-2xl border transition-all duration-300 backdrop-blur-xl shadow-2xl shadow-black/10 dark:shadow-black/40 ${isDragging
+                            ? 'bg-indigo-500/20 border-indigo-500/50 ring-2 ring-indigo-500/30'
+                            : 'bg-white/90 dark:bg-slate-800/90 border-slate-200/60 dark:border-slate-700/60'
+                        }`}
+                >
+                    {/* Attach */}
                     <input
                         type="file"
                         multiple
@@ -104,64 +139,48 @@ export function ShareInput() {
                         onChange={handleFileSelect}
                         className="hidden"
                     />
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10 rounded-xl text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors cursor-pointer shrink-0 ml-1 mb-1"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach file"
+                    >
+                        <Paperclip className="w-5 h-5" />
+                    </Button>
 
-                    <Textarea
+                    {/* Textarea */}
+                    <textarea
+                        ref={textareaRef}
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
-                        placeholder="Type or drop files here to share with the network..."
-                        className="w-full min-h-[160px] resize-none border-0 shadow-none focus-visible:ring-0 p-6 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent text-slate-800 dark:text-slate-200 leading-relaxed"
+                        placeholder="Share something with the board..."
+                        rows={1}
+                        className="flex-1 resize-none border-0 bg-transparent py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none leading-relaxed min-h-[44px] max-h-[120px]"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
                                 handleShare();
                             }
                         }}
                     />
-                    <div className="bg-slate-50/50 dark:bg-slate-900/80 p-3 flex flex-col gap-3 transition-colors duration-200">
-                        {/* File Preview Chips */}
-                        {selectedFiles.length > 0 && (
-                            <div className="flex flex-wrap gap-2 px-3 pb-2 mb-1 border-b border-slate-200/50 dark:border-slate-800/50">
-                                {selectedFiles.map((file, index) => (
-                                    <div key={index} className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg text-sm font-medium border border-indigo-100 dark:border-indigo-500/20 max-w-full">
-                                        <FileIcon className="w-4 h-4 shrink-0" />
-                                        <span className="truncate max-w-[150px]">{file.name}</span>
-                                        <span className="text-indigo-400 dark:text-indigo-500 text-xs shrink-0">{(file.size / 1024 / 1024).toFixed(1)}MB</span>
-                                        <button
-                                            onClick={() => removeSelectedFile(index)}
-                                            className="ml-1 text-indigo-400 hover:text-indigo-600 dark:text-indigo-500 dark:hover:text-indigo-300 transition-colors cursor-pointer"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
 
-                        <div className="flex justify-between items-center w-full">
-                            <div className="flex items-center gap-2 ml-3">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-9 w-9 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    title="Attach file"
-                                >
-                                    <Paperclip className="w-5 h-5" />
-                                </Button>
-                                <div className="hidden sm:flex items-center justify-center w-6 h-6 rounded bg-slate-200/50 dark:bg-slate-800/50 text-[10px] font-bold text-slate-500 dark:text-slate-400 ml-2">⌘</div>
-                                <span className="hidden sm:inline text-xs text-slate-400 dark:text-slate-500 font-medium">+ Enter to send</span>
-                            </div>
-                            <Button
-                                onClick={handleShare}
-                                disabled={(!inputText.trim() && selectedFiles.length === 0) || connectionState !== 'connected'}
-                                className="rounded-xl px-6 h-10 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-indigo-600 dark:hover:bg-indigo-50 hover:text-white cursor-pointer transition-all duration-300 shadow-md font-semibold"
-                            >
-                                <Send className="w-4 h-4 mr-2" />
-                                Share to Board
-                            </Button>
-                        </div>
-                    </div>
+                    {/* Send */}
+                    <Button
+                        onClick={handleShare}
+                        disabled={(!inputText.trim() && selectedFiles.length === 0) || connectionState !== 'connected'}
+                        className="h-10 w-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:shadow-none shrink-0 mr-1 mb-1 p-0"
+                        title="Share (⌘ + Enter)"
+                    >
+                        <Send className="w-4 h-4" />
+                    </Button>
                 </div>
+
+                {/* Subtle hint */}
+                <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 mt-1.5 select-none">
+                    Drop files or press ⌘ + Enter to share
+                </p>
             </div>
-        </motion.div>
+        </div>
     );
 }
