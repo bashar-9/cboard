@@ -152,8 +152,14 @@ export function useBoardNetwork() {
 
         initialize();
 
+        // Setup expiration cleanup interval (every 1 minute)
+        const cleanupInterval = setInterval(() => {
+            useBoardStore.getState().removeExpiredItems();
+        }, 60000);
+
         return () => {
             isMounted = false;
+            clearInterval(cleanupInterval);
             webrtcRef.current?.cleanup();
             if (channelRef.current) {
                 channelRef.current.unbind_all();
@@ -201,6 +207,7 @@ export function useBoardNetwork() {
             content: text,
             senderId: store.myId,
             timestamp: Date.now(),
+            expiresAt: Date.now() + 60 * 60 * 1000, // 60 minutes default expiration
         };
 
         // Add locally securely

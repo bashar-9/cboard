@@ -12,6 +12,7 @@ export interface SharedItem {
     mimeType?: string;
     senderId: string;
     timestamp: number;
+    expiresAt: number;
 }
 
 interface BoardState {
@@ -35,6 +36,7 @@ interface BoardState {
 
     addItem: (item: SharedItem) => void;
     clearItems: () => void;
+    removeExpiredItems: () => void;
     addDebugLog: (log: string) => void;
 }
 
@@ -60,14 +62,27 @@ export const useBoardStore = create<BoardState>()(
                 peers: state.peers.filter((p) => p !== peerId)
             })),
 
-            addItem: (item) => set((state) => ({
-                // Add to top of the list, avoid duplicates by ID just in case
-                items: state.items.some(i => i.id === item.id)
-                    ? state.items
-                    : [item, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
-            })),
+            addItem: (item) => set((state) => {
+                // Compatibility for old items missing expiresAt
+                if (!item.expiresAt) {
+                    item.expiresAt = item.timestamp + 60 * 60 * 1000;
+                }
+                return {
+                    // Add to top of the list, avoid duplicates by ID just in case
+                    items: state.items.some(i => i.id === item.id)
+                        ? state.items
+                        : [item, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
+                };
+            }),
 
             clearItems: () => set({ items: [] }),
+
+            removeExpiredItems: () => set((state) => {
+                const now = Date.now();
+                return {
+                    items: state.items.filter(item => item.expiresAt > now)
+                };
+            }),
 
             addDebugLog: (log) => set((state) => ({
                 debugLogs: [`[${new Date().toISOString().split('T')[1].slice(0, -1)}] ${log}`, ...state.debugLogs].slice(0, 50)

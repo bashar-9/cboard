@@ -1,14 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
 import { useBoardStore } from '@/store/useBoardStore';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
-import { Copy, Users, WifiOff, Send, Clock } from 'lucide-react';
+import { Copy, Users, WifiOff, Send, Clock, Timer } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+
+function ExpiresIn({ expiresAt }: { expiresAt: number }) {
+  const [mins, setMins] = useState<number | null>(null);
+
+  useEffect(() => {
+    const updateTime = () => setMins(Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000)));
+    updateTime();
+    const interval = setInterval(updateTime, 60000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  if (mins === null || mins <= 0) return null;
+
+  return (
+    <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
+      <span>•</span>
+      <Timer className="w-3 h-3" />
+      <span>{mins}m</span>
+    </span>
+  );
+}
 
 export default function Home() {
   const { shareText, error } = useBoardNetwork();
@@ -126,6 +147,7 @@ export default function Home() {
                             <Clock className="w-3 h-3" />
                             {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          {item.expiresAt && <ExpiresIn expiresAt={item.expiresAt} />}
                         </div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors duration-200" onClick={() => copyToClipboard(item.content)}>
