@@ -13,17 +13,6 @@ function generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substring(2, 12);
 }
 
-// Persistent device ID so "You" labels survive refreshes
-function getDeviceId(): string {
-    const KEY = 'share-board-device-id';
-    let id = localStorage.getItem(KEY);
-    if (!id) {
-        id = generateId().substring(0, 8);
-        localStorage.setItem(KEY, id);
-    }
-    return id;
-}
-
 export function useBoardNetwork() {
     const store = useBoardStore();
     const webrtcRef = useRef<WebRTCManager | null>(null);
@@ -41,15 +30,15 @@ export function useBoardNetwork() {
                 // 1. Get room details based on IP
                 const res = await fetch('/api/room');
                 if (!res.ok) throw new Error('Failed to get room config');
-                const { roomName, ip } = await res.json();
+                const { roomName, ip, userId } = await res.json();
 
                 if (!isMounted) return;
                 store.setRoomCode(roomName);
                 store.addDebugLog(`Got IP: ${ip} -> Room: ${roomName.slice(0, 15)}...`);
 
                 // 2. Connect to Pusher Presence Channel
-                const myDeviceId = getDeviceId();
-                const pusher = getPusherClient(myDeviceId);
+                // Use the userId assigned by the server
+                const pusher = getPusherClient(userId);
                 const channel = pusher.subscribe(roomName) as any;
                 channelRef.current = channel;
 
