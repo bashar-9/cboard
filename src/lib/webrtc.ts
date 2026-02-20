@@ -5,6 +5,10 @@ export type SignalMessage = {
     data: unknown;
 };
 
+interface ExtendedRTCPeerConnection extends RTCPeerConnection {
+    _safeSignalHandle?: (msg: SignalMessage) => Promise<void>;
+}
+
 export class WebRTCManager {
     private peers: Map<string, RTCPeerConnection> = new Map();
     private channels: Map<string, RTCDataChannel> = new Map();
@@ -85,7 +89,7 @@ export class WebRTCManager {
         }
 
         // Attach safe signal handler for this specific peer to handle stare/glare correctly
-        (pc as any)._safeSignalHandle = async (msg: SignalMessage) => {
+        (pc as ExtendedRTCPeerConnection)._safeSignalHandle = async (msg: SignalMessage) => {
             try {
                 if (msg.type === 'offer' || msg.type === 'answer') {
                     const isOffer = msg.type === 'offer';
@@ -143,8 +147,9 @@ export class WebRTCManager {
         if (!pc) return;
 
         // Pass signal directly into the peer's custom handler to maintain closure state over `ignoreOffer`
-        if ((pc as any)._safeSignalHandle) {
-            (pc as any)._safeSignalHandle(msg);
+        const extendedPc = pc as ExtendedRTCPeerConnection;
+        if (extendedPc._safeSignalHandle) {
+            extendedPc._safeSignalHandle(msg);
         }
     }
 
