@@ -5,12 +5,14 @@ import { getPusherClient } from '@/lib/pusher';
 import { WebRTCManager, SignalMessage } from '@/lib/webrtc';
 import { Channel } from 'pusher-js';
 
-// Fallback for non-secure contexts (HTTP on phones)
 function generateId(): string {
+    let id = '';
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
+        id = crypto.randomUUID();
+    } else {
+        id = Date.now().toString(36) + Math.random().toString(36).substring(2, 12);
     }
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 12);
+    return id.padEnd(36, ' ').substring(0, 36);
 }
 
 export function useBoardNetwork() {
@@ -60,18 +62,98 @@ export function useBoardNetwork() {
                     };
 
                     // Wire WebRTC connection states
-                    rtc.onConnect = (peerId) => {
+                    rtc.onConnect = async (peerId) => {
                         store.addDebugLog(`WebRTC Connected to ${peerId}!`);
                         store.addPeer(peerId);
 
                         // Sync existing board items to the new peer
                         const currentItems = useBoardStore.getState().items;
                         if (currentItems.length > 0) {
-                            store.addDebugLog(`Syncing ${currentItems.length} items to ${peerId}`);
-                            rtc.sendTo(peerId, JSON.stringify({
-                                type: 'sync',
-                                items: currentItems
-                            }));
+                            const textItems = currentItems.filter(i => i.type === 'text' || i.type === 'post');
+                            if (textItems.length > 0) {
+                                store.addDebugLog(`Syncing ${textItems.length} text items to ${peerId}`);
+                                rtc.sendTo(peerId, JSON.stringify({
+                                    type: 'sync',
+                                    items: textItems.map(item => {
+                                        if (item.type === 'post' && item.attachments) {
+                                            return { ...item, attachments: item.attachments.map(a => ({ ...a, fileData: undefined })) };
+                                        }
+                                        return item;
+                                    })
+                                }));
+                            }
+
+                            // Sync legacy single files
+                            const fileItems = currentItems.filter(i => i.type === 'file' && i.fileData);
+                            for (const item of fileItems) {
+                                try {
+                                    if (!item.fileData) continue;
+                                    const blob = await fetch(item.fileData).then(r => r.blob());
+                                    const arrayBuffer = await blob.arrayBuffer();
+                                    const totalChunks = Math.ceil(arrayBuffer.byteLength / 64000);
+
+                                    store.addDebugLog(`Syncing file ${item.fileName} to ${peerId}`);
+                                    rtc.sendTo(peerId, JSON.stringify({ type: 'file-start', item, totalChunks }));
+
+                                    const idBytes = new TextEncoder().encode(item.id.padEnd(36, ' ').substring(0, 36));
+                                    let offset = 0;
+                                    while (offset < arrayBuffer.byteLength) {
+                                        const chunk = arrayBuffer.slice(offset, offset + 64000);
+                                        const chunkData = new Uint8Array(chunk);
+                                        const message = new Uint8Array(36 + chunkData.length);
+                                        message.set(idBytes, 0);
+                                        message.set(chunkData, 36);
+
+                                        rtc.sendTo(peerId, message.buffer);
+                                        offset += 64000;
+                                        await new Promise(r => setTimeout(r, 5)); // Throttle
+                                    }
+                                    rtc.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: item.id }));
+                                } catch (err) {
+                                    console.error("Failed to sync file to peer", err);
+                                }
+                            }
+
+                            // Sync post attachments
+                            const postItemsWithAttachments = currentItems.filter(i => i.type === 'post' && i.attachments && i.attachments.length > 0);
+                            for (const item of postItemsWithAttachments) {
+                                for (const att of item.attachments!) {
+                                    try {
+                                        if (!att.fileData) continue;
+                                        const blob = await fetch(att.fileData).then(r => r.blob());
+                                        const arrayBuffer = await blob.arrayBuffer();
+                                        const totalChunks = Math.ceil(arrayBuffer.byteLength / 64000);
+
+                                        store.addDebugLog(`Syncing file ${att.fileName} to ${peerId}`);
+                                        rtc.sendTo(peerId, JSON.stringify({
+                                            type: 'file-start',
+                                            fileId: att.id,
+                                            itemId: item.id,
+                                            fileName: att.fileName,
+                                            fileSize: att.fileSize,
+                                            mimeType: att.mimeType,
+                                            totalChunks
+                                        }));
+
+                                        const idBytes = new TextEncoder().encode(att.id.padEnd(36, ' ').substring(0, 36));
+                                        let offset = 0;
+                                        while (offset < arrayBuffer.byteLength) {
+                                            const chunk = arrayBuffer.slice(offset, offset + 64000);
+                                            const chunkData = new Uint8Array(chunk);
+                                            const message = new Uint8Array(36 + chunkData.length);
+                                            message.set(idBytes, 0);
+                                            message.set(chunkData, 36);
+
+                                            rtc.sendTo(peerId, message.buffer);
+                                            offset += 64000;
+                                            await new Promise(r => setTimeout(r, 5)); // Throttle
+                                        }
+                                        rtc.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: att.id, itemId: item.id }));
+                                    } catch (err) {
+                                        console.error("Failed to sync file to peer", err);
+                                    }
+                                }
+                            }
                         }
                     };
                     rtc.onDisconnect = (peerId) => {
@@ -168,9 +250,7 @@ export function useBoardNetwork() {
             if (typeof data === 'string') {
                 const payload = JSON.parse(data);
 
-                if (payload.type === 'text') {
-                    useBoardStore.getState().addItem(payload.item);
-                } else if (payload.type === 'file-meta') {
+                if (payload.type === 'text' || payload.type === 'post') {
                     useBoardStore.getState().addItem(payload.item);
                 } else if (payload.type === 'sync') {
                     // Merge synced items from the peer
@@ -179,50 +259,163 @@ export function useBoardNetwork() {
                     useBoardStore.getState().addItems(items);
                 } else if (payload.type === 'delete') {
                     useBoardStore.getState().deleteItem(payload.itemId);
+                } else if (payload.type === 'file-start') {
+                    const { item, fileId, itemId, totalChunks } = payload;
+                    useBoardStore.getState().startIncomingFile({
+                        id: fileId || item?.id,
+                        itemId: itemId || item?.id,
+                        fileName: payload.fileName || item?.fileName,
+                        fileSize: payload.fileSize || item?.fileSize,
+                        mimeType: payload.mimeType || item?.mimeType,
+                        senderId: item?.senderId,
+                        receivedBytes: 0,
+                        totalChunks,
+                        receivedChunks: 0,
+                        chunks: []
+                    });
+                } else if (payload.type === 'file-complete') {
+                    const { fileId } = payload;
+                    const storeState = useBoardStore.getState();
+                    const incoming = storeState.incomingFiles[fileId];
+                    if (incoming) {
+                        try {
+                            const fullBuffer = new Uint8Array(incoming.receivedBytes);
+                            let offset = 0;
+                            for (const chunk of incoming.chunks) {
+                                fullBuffer.set(new Uint8Array(chunk), offset);
+                                offset += chunk.byteLength;
+                            }
+                            const blob = new Blob([fullBuffer], { type: incoming.mimeType });
+                            const fileUrl = URL.createObjectURL(blob);
+
+                            // If this chunk belongs to a post attachment
+                            if (incoming.itemId && incoming.itemId !== incoming.id) {
+                                storeState.attachFileToItem(incoming.itemId, incoming.id, fileUrl);
+                            } else {
+                                // Legacy standalone file
+                                storeState.addItem({
+                                    id: incoming.id,
+                                    type: 'file',
+                                    content: `File: ${incoming.fileName}`,
+                                    fileName: incoming.fileName,
+                                    fileSize: incoming.fileSize,
+                                    mimeType: incoming.mimeType,
+                                    fileData: fileUrl,
+                                    senderId: incoming.senderId || '',
+                                    timestamp: Date.now(),
+                                    expiresAt: Date.now() + 60 * 60 * 1000
+                                });
+                            }
+                        } catch (err) {
+                            console.error("Failed to reassemble file", err);
+                        } finally {
+                            storeState.completeIncomingFile(fileId);
+                        }
+                    }
                 }
             } else if (data instanceof ArrayBuffer) {
-                // Handle binary ArrayBuffer (file chunks)
+                // Binary chunk
+                const buffer = new Uint8Array(data);
+                const idBytes = buffer.slice(0, 36);
+                const fileId = new TextDecoder().decode(idBytes).trim();
+                const chunkData = data.slice(36);
+
+                const storeState = useBoardStore.getState();
+                const incoming = storeState.incomingFiles[fileId];
+                if (incoming) {
+                    storeState.updateIncomingFileProgress(fileId, chunkData, incoming.totalChunks);
+                }
             }
         } catch (err) {
             console.error("Failed parsing message", err);
         }
     };
 
-    // Exposed Actions
-    const shareText = (text: string) => {
+    const sharePost = async (text: string, files: File[]) => {
         if (!webrtcRef.current || !store.myId) return;
 
-        const item: SharedItem = {
+        const itemId = generateId();
+        const attachments = files.map(f => ({
             id: generateId(),
-            type: 'text',
+            fileName: f.name,
+            fileSize: f.size,
+            mimeType: f.type,
+            fileData: URL.createObjectURL(f)
+        }));
+
+        const item: SharedItem = {
+            id: itemId,
+            type: attachments.length > 0 ? 'post' : 'text',
             content: text,
+            attachments: attachments.length > 0 ? attachments : undefined,
             senderId: store.myId,
             timestamp: Date.now(),
-            expiresAt: Date.now() + 60 * 60 * 1000, // 60 minutes default expiration
+            expiresAt: Date.now() + 60 * 60 * 1000
         };
 
-        // Add locally securely
         store.addItem(item);
 
-        // Broadcast WebRTC String
+        // Broadcast post structure
         webrtcRef.current.broadcast(JSON.stringify({
-            type: 'text',
-            item
+            type: item.type,
+            item: attachments.length > 0
+                ? { ...item, attachments: attachments.map(a => ({ ...a, fileData: undefined })) }
+                : item
         }));
+
+        // Stream chunks
+        const CHUNK_SIZE = 64000;
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const attId = attachments[i].id;
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
+
+                webrtcRef.current.broadcast(JSON.stringify({
+                    type: 'file-start',
+                    fileId: attId,
+                    itemId: itemId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type,
+                    totalChunks
+                }));
+
+                const idBytes = new TextEncoder().encode(attId.padEnd(36, ' ').substring(0, 36));
+                let offset = 0;
+                while (offset < arrayBuffer.byteLength) {
+                    const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE);
+                    const chunkData = new Uint8Array(chunk);
+                    const message = new Uint8Array(36 + chunkData.length);
+                    message.set(idBytes, 0);
+                    message.set(chunkData, 36);
+
+                    webrtcRef.current.broadcast(message.buffer);
+                    offset += CHUNK_SIZE;
+
+                    await new Promise(r => setTimeout(r, 5)); // Throttle
+                }
+
+                webrtcRef.current.broadcast(JSON.stringify({ type: 'file-complete', fileId: attId, itemId }));
+            } catch (err) {
+                console.error(`File sharing failed for ${file.name}`, err);
+                store.addDebugLog(`File sharing failed: ${err}`);
+            }
+        }
     };
 
     const deleteItem = (itemId: string) => {
         if (!webrtcRef.current || !store.myId) return;
 
-        // Remove locally securely
         store.deleteItem(itemId);
 
-        // Broadcast WebRTC Delete Instruction
         webrtcRef.current.broadcast(JSON.stringify({
             type: 'delete',
             itemId
         }));
     };
 
-    return { error, shareText, deleteItem };
+    return { error, sharePost, deleteItem };
 }

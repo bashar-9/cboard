@@ -23,12 +23,13 @@
 | 2026-02-20 | Phase 5 — Network Debugging | Fixed WebRTC glare state errors via Perfect Negotiation |
 | 2026-02-20 | UI/UX Level Up | Refactored UI entirely replacing standard layouts with `ui-ux-pro-max` premium styling (glassmorphism/framer-motion). |
 | 2026-02-20 | Deployment Preparation | Pushed repository to GitHub as CBoard |
+| 2026-02-20 | Phase 6 — File Transfers | Implemented File ArrayBuffer chunking natively over WebRTC DataChannels + Droppable UI + Object URL Previews. |
 
 ## In Progress
 
-| Task | Status | Notes |
+| Feature | Status | Notes |
 |------|--------|-------|
-| Phase 6 — File Transfers | 🟢 Active | Need to extend WebRTC Core and UI to support large file chunking and drag-and-drop. |
+| Mobile Responsiveness | 🟢 Active | Ensuring the layout looks perfect on mobile devices |
 
 ## Future Versions
 

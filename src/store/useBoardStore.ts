@@ -1,15 +1,38 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type SharedItemType = 'text' | 'file';
+export type SharedItemType = 'text' | 'file' | 'post';
+
+export interface SharedAttachment {
+    id: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    fileData?: string;
+}
+
+export interface IncomingFile {
+    id: string;
+    itemId?: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    senderId?: string;
+    receivedBytes: number;
+    totalChunks: number;
+    receivedChunks: number;
+    chunks: ArrayBuffer[];
+}
 
 export interface SharedItem {
     id: string;
     type: SharedItemType;
-    content: string; // Text content or file name
-    fileData?: Blob | ArrayBuffer; // For files
-    fileSize?: number;
-    mimeType?: string;
+    content: string; // Text content or file desc
+    attachments?: SharedAttachment[];
+    fileData?: string; // legacy base64 / Object URL
+    fileName?: string; // legacy
+    fileSize?: number; // legacy
+    mimeType?: string; // legacy
     senderId: string;
     timestamp: number;
     expiresAt: number;
@@ -24,6 +47,7 @@ interface BoardState {
 
     // Board Data
     items: SharedItem[];
+    incomingFiles: Record<string, IncomingFile>;
     debugLogs: string[];
 
     // Actions
@@ -39,6 +63,12 @@ interface BoardState {
     deleteItem: (itemId: string) => void;
     clearItems: () => void;
     removeExpiredItems: () => void;
+
+    startIncomingFile: (file: IncomingFile) => void;
+    updateIncomingFileProgress: (id: string, chunk: ArrayBuffer, totalChunks: number) => void;
+    completeIncomingFile: (id: string) => void;
+    attachFileToItem: (itemId: string, attachmentId: string, fileUrl: string) => void;
+
     addDebugLog: (log: string) => void;
 }
 
@@ -50,6 +80,7 @@ export const useBoardStore = create<BoardState>()(
             roomCode: null,
             peers: [],
             items: [],
+            incomingFiles: {},
             debugLogs: [],
 
             setMyId: (id) => set({ myId: id }),
@@ -113,14 +144,57 @@ export const useBoardStore = create<BoardState>()(
                 };
             }),
 
+            startIncomingFile: (file) => set((state) => ({
+                incomingFiles: { ...state.incomingFiles, [file.id]: file }
+            })),
+
+            updateIncomingFileProgress: (id, chunk, totalChunks) => set((state) => {
+                const file = state.incomingFiles[id];
+                if (!file) return state;
+
+                const newChunks = [...file.chunks, chunk];
+                return {
+                    incomingFiles: {
+                        ...state.incomingFiles,
+                        [id]: {
+                            ...file,
+                            receivedBytes: file.receivedBytes + chunk.byteLength,
+                            receivedChunks: file.receivedChunks + 1,
+                            totalChunks, // ensure accurate total
+                            chunks: newChunks
+                        }
+                    }
+                };
+            }),
+
+            completeIncomingFile: (id) => set((state) => {
+                const newIncoming = { ...state.incomingFiles };
+                delete newIncoming[id];
+                return { incomingFiles: newIncoming };
+            }),
+
+            attachFileToItem: (itemId, attachmentId, fileUrl) => set((state) => ({
+                items: state.items.map(item => {
+                    if (item.id === itemId && item.attachments) {
+                        return {
+                            ...item,
+                            attachments: item.attachments.map(att =>
+                                att.id === attachmentId ? { ...att, fileData: fileUrl } : att
+                            )
+                        };
+                    }
+                    return item;
+                })
+            })),
+
             addDebugLog: (log) => set((state) => ({
                 debugLogs: [`[${new Date().toISOString().split('T')[1].slice(0, -1)}] ${log}`, ...state.debugLogs].slice(0, 50)
             })),
         }),
         {
             name: 'share-board-storage',
-            // Only keep the items, we want network state to reset on refresh
-            partialize: (state) => ({ items: state.items } as Partial<BoardState>),
+            // Only keep the text items, large files crash localStorage
+            partialize: (state) => ({ items: state.items.filter(i => i.type === 'text') } as Partial<BoardState>),
             onRehydrateStorage: () => (state) => {
                 if (state) {
                     state.removeExpiredItems();
