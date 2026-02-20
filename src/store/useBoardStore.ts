@@ -97,6 +97,11 @@ export const useBoardStore = create<BoardState>()(
             name: 'share-board-storage',
             // Only keep the items, we want network state to reset on refresh
             partialize: (state) => ({ items: state.items } as Partial<BoardState>),
+            onRehydrateStorage: () => (state) => {
+                if (state) {
+                    state.removeExpiredItems();
+                }
+            },
         }
     )
 );

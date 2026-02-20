@@ -152,6 +152,9 @@ export function useBoardNetwork() {
 
         initialize();
 
+        // Perform immediate cleanup of expired items on mount
+        useBoardStore.getState().removeExpiredItems();
+
         // Setup expiration cleanup interval (every 1 minute)
         const cleanupInterval = setInterval(() => {
             useBoardStore.getState().removeExpiredItems();
