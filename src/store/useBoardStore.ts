@@ -35,6 +35,7 @@ interface BoardState {
     removePeer: (peerId: string) => void;
 
     addItem: (item: SharedItem) => void;
+    deleteItem: (itemId: string) => void;
     clearItems: () => void;
     removeExpiredItems: () => void;
     addDebugLog: (log: string) => void;
@@ -74,6 +75,10 @@ export const useBoardStore = create<BoardState>()(
                         : [item, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
                 };
             }),
+
+            deleteItem: (itemId) => set((state) => ({
+                items: state.items.filter(item => item.id !== itemId)
+            })),
 
             clearItems: () => set({ items: [] }),
 

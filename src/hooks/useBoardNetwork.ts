@@ -188,6 +188,8 @@ export function useBoardNetwork() {
                     items.forEach((item: SharedItem) => {
                         useBoardStore.getState().addItem(item);
                     });
+                } else if (payload.type === 'delete') {
+                    useBoardStore.getState().deleteItem(payload.itemId);
                 }
             } else if (data instanceof ArrayBuffer) {
                 // Handle binary ArrayBuffer (file chunks)
@@ -220,5 +222,18 @@ export function useBoardNetwork() {
         }));
     };
 
-    return { error, shareText };
+    const deleteItem = (itemId: string) => {
+        if (!webrtcRef.current || !store.myId) return;
+
+        // Remove locally securely
+        store.deleteItem(itemId);
+
+        // Broadcast WebRTC Delete Instruction
+        webrtcRef.current.broadcast(JSON.stringify({
+            type: 'delete',
+            itemId
+        }));
+    };
+
+    return { error, shareText, deleteItem };
 }

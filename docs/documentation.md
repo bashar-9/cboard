@@ -6,7 +6,7 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 ## Core Architecture & Tech Stack
 - **Framework:** Next.js (App Router)
 - **Deployment:** Vercel
-- **Styling:** Tailwind CSS + Shadcn/ui
+- **Styling & Physics:** Tailwind CSS + Shadcn/ui + Framer Motion
 - **State Management:** Zustand
 - **Networking/Data Transfer:** WebRTC (Peer-to-Peer) for direct, serverless file/text transfer on the local network.
 - **Signaling:** Pusher Channels (or similar lightweight WebSocket service) for initial device discovery and WebRTC handshake.
