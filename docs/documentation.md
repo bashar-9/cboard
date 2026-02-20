@@ -16,10 +16,13 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 - **Primary (Internet Available):** Users are grouped automatically based on their public IP address. Devices with matching public IPs are placed in the same signaling "room."
 - **Fallback (No Internet):** A "Local First" approach. Device A displays a QR code containing its local IP address. Device B scans it to connect directly over the local Wi-Fi router.
 
-### 2. Data Transfer
-- All file and text transfers occur over WebRTC Data Channels.
+### 2. Data Transfer & Connection Strategy
+- All file and text transfers occur over **WebRTC Data Channels**.
 - Files never touch Vercel's servers, ensuring zero bandwidth cost for transfers, unlimited file sizes (dictated by device memory), and strict privacy.
 - The web app operates as a Progressive Web App (PWA) so it can load from the device cache when offline.
+- **WebRTC Signaling Pattern:** Uses "Perfect Negotiation" to avoid Glare/State errors when peers connect. A deterministic comparison of string User IDs decides which device is "polite" (waits for offer) vs "impolite" (sends offer).
+- **Persistent Identity:** A persistent device ID is stored in `localStorage`. This prevents the "Sender" attribution resolving to "Someone" when a user refreshes the page and gets assigned a new Pusher socket ID.
+- **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC.
 
 ## Future Scalability Considerations
 - **Private Mode:** Add authentication to allow users to have private, synchronized clipboards across their own devices only.

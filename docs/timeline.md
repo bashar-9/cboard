@@ -18,18 +18,14 @@
 | 2026-02-20 | Phase 2 — Signaling | Pusher integration, IP-based room grouping |
 | 2026-02-20 | Phase 3 — WebRTC Core | Vanilla WebRTC data channels for text broadcast setup |
 | 2026-02-20 | Phase 4 — UI/UX | Shared board dashboard built, Shadcn applied, linting passed |
+| 2026-02-20 | Phase 5 — Network Debugging | Fixed WebRTC glare state errors via Perfect Negotiation |
+| 2026-02-20 | Deployment Preparation | Pushed repository to GitHub as CBoard |
 
 ## In Progress
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Phase 5 — Deploy & Env | ⏳ Blocked | Need to set up Pusher environment variables to test signaling. |
-
-## Planned (Not Started)
-
-| Phase | Description |
-|-------|-------------|
-| Phase 6 — File Transfers | Extend WebRTC Core to support large file chunks |
+| Phase 6 — File Transfers | 🟢 Active | Need to extend WebRTC Core and UI to support large file chunking and drag-and-drop. |
 
 ## Future Versions
 
