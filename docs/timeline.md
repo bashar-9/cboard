@@ -18,6 +18,7 @@
 | 2026-02-20 | Phase 2 — Signaling | Pusher integration, IP-based room grouping |
 | 2026-02-20 | Phase 3 — WebRTC Core | Vanilla WebRTC data channels for text broadcast setup |
 | 2026-02-20 | Phase 4 — UI/UX | Shared board dashboard built, Shadcn applied, linting passed |
+| 2026-02-20 | Enhancement | Added Dark Mode via next-themes with ThemeToggle |
 | 2026-02-20 | Phase 5 — Network Debugging | Fixed WebRTC glare state errors via Perfect Negotiation |
 | 2026-02-20 | Deployment Preparation | Pushed repository to GitHub as CBoard |
 
