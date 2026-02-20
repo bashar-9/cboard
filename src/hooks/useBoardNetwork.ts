@@ -127,7 +127,6 @@ export function useBoardNetwork() {
                     const currentId = membersWaitIdFallback();
 
                     if (msg.to !== currentId) {
-                        // store.addDebugLog(`Ignored signal for ${msg.to}, I am ${currentId}`);
                         return;
                     }
 
