@@ -35,6 +35,7 @@ interface BoardState {
     removePeer: (peerId: string) => void;
 
     addItem: (item: SharedItem) => void;
+    addItems: (items: SharedItem[]) => void;
     deleteItem: (itemId: string) => void;
     clearItems: () => void;
     removeExpiredItems: () => void;
@@ -73,6 +74,29 @@ export const useBoardStore = create<BoardState>()(
                     items: state.items.some(i => i.id === item.id)
                         ? state.items
                         : [item, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
+                };
+            }),
+
+            addItems: (newItems) => set((state) => {
+                const existingIds = new Set(state.items.map(i => i.id));
+                const uniqueNewItems = [];
+                const seenNewIds = new Set();
+
+                for (const item of newItems) {
+                    if (!existingIds.has(item.id) && !seenNewIds.has(item.id)) {
+                        // Compatibility for old items missing expiresAt
+                        if (!item.expiresAt) {
+                            item.expiresAt = item.timestamp + 60 * 60 * 1000;
+                        }
+                        uniqueNewItems.push(item);
+                        seenNewIds.add(item.id);
+                    }
+                }
+
+                if (uniqueNewItems.length === 0) return state;
+
+                return {
+                    items: [...uniqueNewItems, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
                 };
             }),
 

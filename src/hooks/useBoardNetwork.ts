@@ -185,9 +185,7 @@ export function useBoardNetwork() {
                     // Merge synced items from the peer
                     const items = payload.items as SharedItem[];
                     useBoardStore.getState().addDebugLog(`Received sync: ${items.length} items from ${peerId}`);
-                    items.forEach((item: SharedItem) => {
-                        useBoardStore.getState().addItem(item);
-                    });
+                    useBoardStore.getState().addItems(items);
                 } else if (payload.type === 'delete') {
                     useBoardStore.getState().deleteItem(payload.itemId);
                 }
