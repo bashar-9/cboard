@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 
 export type SharedItemType = 'text' | 'file';
 
@@ -96,7 +96,7 @@ export const useBoardStore = create<BoardState>()(
         {
             name: 'share-board-storage',
             // Only keep the items, we want network state to reset on refresh
-            partialize: (state) => ({ items: state.items } as any),
+            partialize: (state) => ({ items: state.items } as Partial<BoardState>),
         }
     )
 );
