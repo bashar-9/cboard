@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
 import { useBoardStore, SharedItem } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Copy, Clock, Timer, Trash2, CheckCircle2, Download, File as FileIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
@@ -22,8 +21,8 @@ function ExpiresIn({ expiresAt }: { expiresAt: number }) {
     if (mins === null || mins <= 0) return null;
 
     return (
-        <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500">
-            <span>•</span>
+        <span className="flex items-center gap-0.5 text-slate-400 dark:text-slate-500">
+            <span>·</span>
             <Timer className="w-3 h-3" />
             <span>{mins}m</span>
         </span>
@@ -51,153 +50,125 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
         toast.success('Item deleted');
     };
 
+    const isMine = item.senderId === myId;
+
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, y: 30, scale: 0.95, filter: "blur(4px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.95, filter: "blur(4px)", transition: { duration: 0.2 } }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="group relative"
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.15 } }}
+            transition={{ type: "spring", stiffness: 500, damping: 35 }}
+            className="group"
         >
-            {/* Glowing Aura Effect */}
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-slate-200/50 to-slate-100/50 dark:from-slate-800/50 dark:to-slate-700/30 rounded-[1.8rem] blur-lg opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none"></div>
-
-            <Card className="relative overflow-hidden rounded-[1.5rem] border border-white/60 dark:border-slate-800/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl">
-                {/* Top Glass Highlight */}
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 dark:via-white/10 to-transparent pointer-events-none" />
-
-                <CardHeader className="px-6 pt-6 pb-2 flex flex-row items-center justify-between space-y-0">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm border ${item.senderId === myId ? 'bg-slate-900 text-white border-slate-700 dark:bg-white dark:text-slate-900 dark:border-slate-200' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}>
-                            {item.senderId === myId ? 'Y' : 'S'}
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight leading-none mb-1">
-                                {item.senderId === myId ? 'You' : 'Someone'}
-                            </span>
-                            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                {item.expiresAt && <ExpiresIn expiresAt={item.expiresAt} />}
-                            </div>
-                        </div>
+            <div className="relative rounded-xl border border-slate-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md hover:bg-white/80 dark:hover:bg-white/[0.05] transition-colors duration-200">
+                {/* Header row */}
+                <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-1.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isMine ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500/30' : 'bg-slate-500/15 dark:bg-slate-500/20 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400/30 dark:ring-slate-500/30'}`}>
+                        {isMine ? 'Y' : 'S'}
                     </div>
-
-                    {/* Delete Option - Show only if I sent it */}
-                    {item.senderId === myId && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 min-w-0 flex-1">
+                        <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">{isMine ? 'You' : 'Someone'}</span>
+                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                        <Clock className="w-3 h-3 shrink-0 text-slate-300 dark:text-slate-600" />
+                        <span className="shrink-0">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {item.expiresAt && <ExpiresIn expiresAt={item.expiresAt} />}
+                    </div>
+                    {/* Copy — always visible */}
+                    {item.type === 'text' && (
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:text-slate-500 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-xl cursor-pointer transition-all duration-200"
-                            onClick={() => handleDelete(item.id)}
-                            title="Delete globally"
+                            className={`h-7 w-7 rounded-lg cursor-pointer transition-all duration-200 shrink-0 ${copiedId === item.id ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-500/10' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06]'}`}
+                            onClick={() => copyToClipboard(item.id, item.content)}
+                            title="Copy"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            {copiedId === item.id ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </Button>
                     )}
-                </CardHeader>
+                    {/* Delete — hover only */}
+                    {isMine && (
+                        <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer transition-all duration-200"
+                                onClick={() => handleDelete(item.id)}
+                                title="Delete"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
 
-                <CardContent className="p-6">
+                {/* Content */}
+                <div className="px-3.5 pb-3 pt-0.5">
                     {item.type === 'post' ? (
-                        <div className="bg-slate-50/50 dark:bg-slate-800/30 p-5 rounded-2xl border border-slate-100/50 dark:border-slate-800/50 shadow-inner flex flex-col gap-4 transition-colors">
+                        <div className="flex flex-col gap-2">
                             {item.content && (
-                                <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words font-sans text-[15px]">
+                                <p className="text-[13.5px] text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
                                     {item.content}
                                 </p>
                             )}
                             {item.attachments && item.attachments.length > 0 && (
-                                <div className="flex flex-col gap-3 mt-1">
+                                <div className="flex flex-col gap-1.5">
                                     {item.attachments.map(att => (
-                                        <div key={att.id} className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 rounded-lg flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
-                                                    {att.mimeType?.startsWith('image/') && att.fileData ? (
-                                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                                        <img src={att.fileData} alt="preview" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <FileIcon className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
-                                                    )}
-                                                </div>
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="font-semibold text-sm text-slate-800 dark:text-slate-200 truncate pr-4">{att.fileName}</span>
-                                                    <span className="text-xs font-medium text-slate-500 mt-0.5">
-                                                        {att.fileSize ? (att.fileSize / 1024 / 1024).toFixed(2) + ' MB' : '...'}
-                                                    </span>
-                                                </div>
+                                        <a
+                                            key={att.id}
+                                            href={att.fileData || '#'}
+                                            download={att.fileName}
+                                            className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50/60 dark:bg-white/[0.03] border border-slate-200/50 dark:border-white/[0.06] hover:bg-slate-100/60 dark:hover:bg-white/[0.06] transition-colors group/file"
+                                        >
+                                            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+                                                {att.mimeType?.startsWith('image/') && att.fileData ? (
+                                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                                    <img src={att.fileData} alt="preview" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <FileIcon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                                                )}
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                className="shrink-0 h-9 w-9 p-0 rounded-full bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 dark:hover:bg-indigo-500/20 text-slate-700 dark:text-slate-300 transition-colors shadow-sm cursor-pointer"
-                                                asChild
-                                            >
-                                                <a href={att.fileData || '#'} download={att.fileName}>
-                                                    <Download className="w-4 h-4" />
-                                                </a>
-                                            </Button>
-                                        </div>
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{att.fileName}</span>
+                                                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                                    {att.fileSize ? (att.fileSize / 1024 / 1024).toFixed(2) + ' MB' : '...'}
+                                                </span>
+                                            </div>
+                                            <Download className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 group-hover/file:text-slate-500 dark:group-hover/file:text-slate-400 transition-colors shrink-0" />
+                                        </a>
                                     ))}
                                 </div>
                             )}
                         </div>
                     ) : item.type === 'file' ? (
-                        <div className="bg-slate-50/50 dark:bg-slate-800/30 p-5 rounded-2xl border border-slate-100/50 dark:border-slate-800/50 shadow-inner flex items-center justify-between transition-colors">
-                            <div className="flex items-center gap-4 overflow-hidden">
-                                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
-                                    {item.mimeType?.startsWith('image/') && item.fileData ? (
-                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                        <img src={item.fileData} alt="preview" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <FileIcon className="w-6 h-6 text-indigo-500 dark:text-indigo-400" />
-                                    )}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate pr-4">{item.fileName}</span>
-                                    <span className="text-xs font-medium text-slate-500 mt-0.5">
-                                        {item.fileSize ? (item.fileSize / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
-                                    </span>
-                                </div>
-                            </div>
-                            <Button
-                                variant="ghost"
-                                className="shrink-0 h-10 w-10 p-0 rounded-full bg-slate-200/50 hover:bg-indigo-100 dark:bg-slate-800/80 dark:hover:bg-indigo-500/20 text-slate-700 dark:text-slate-300 transition-colors shadow-sm cursor-pointer"
-                                asChild
-                            >
-                                <a href={item.fileData || '#'} download={item.fileName}>
-                                    <Download className="w-5 h-5" />
-                                </a>
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="bg-slate-50/50 dark:bg-slate-800/30 p-5 rounded-2xl border border-slate-100/50 dark:border-slate-800/50 shadow-inner">
-                            <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words font-sans text-[15px]">
-                                {item.content}
-                            </p>
-                        </div>
-                    )}
-                </CardContent>
-
-                {item.type === 'text' && (
-                    <CardFooter className="px-6 pb-6 pt-0">
-                        <Button
-                            variant="secondary"
-                            className={`w-full h-11 rounded-xl font-semibold tracking-wide transition-all duration-300 shadow-sm cursor-pointer ${copiedId === item.id ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 dark:hover:bg-emerald-500/20' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 dark:hover:border-slate-600'}`}
-                            onClick={() => copyToClipboard(item.id, item.content)}
+                        <a
+                            href={item.fileData || '#'}
+                            download={item.fileName}
+                            className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-50/60 dark:bg-white/[0.03] border border-slate-200/50 dark:border-white/[0.06] hover:bg-slate-100/60 dark:hover:bg-white/[0.06] transition-colors group/file"
                         >
-                            {copiedId === item.id ? (
-                                <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center">
-                                    <CheckCircle2 className="w-4 h-4 mr-2.5" />
-                                    Copied into clipboard
-                                </motion.div>
-                            ) : (
-                                <div className="flex items-center">
-                                    <Copy className="w-4 h-4 mr-2.5 text-slate-400 dark:text-slate-500" />
-                                    Copy to clipboard
-                                </div>
-                            )}
-                        </Button>
-                    </CardFooter>
-                )}
-            </Card>
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+                                {item.mimeType?.startsWith('image/') && item.fileData ? (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img src={item.fileData} alt="preview" className="w-full h-full object-cover" />
+                                ) : (
+                                    <FileIcon className="w-4.5 h-4.5 text-indigo-500 dark:text-indigo-400" />
+                                )}
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{item.fileName}</span>
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                    {item.fileSize ? (item.fileSize / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
+                                </span>
+                            </div>
+                            <Download className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover/file:text-slate-500 dark:group-hover/file:text-slate-400 transition-colors shrink-0" />
+                        </a>
+                    ) : (
+                        <p className="text-[13.5px] text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
+                            {item.content}
+                        </p>
+                    )}
+                </div>
+            </div>
         </motion.div>
     );
 }
