@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useBoardStore, SharedItem } from '@/store/useBoardStore';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { toast } from 'sonner';
 
 export function usePrivateNetworkInit() {
     const isPrivateMode = useBoardStore(state => state.isPrivateMode);
@@ -141,7 +142,7 @@ export function usePrivateNetworkInit() {
 }
 
 export const sendPrivateItem = async (content: string, files?: File[]) => {
-    const { user, addDebugLog } = useBoardStore.getState();
+    const { user, addDebugLog, addPrivateItem } = useBoardStore.getState();
     if (!user) return;
     const supabase = createClient();
 
@@ -176,25 +177,61 @@ export const sendPrivateItem = async (content: string, files?: File[]) => {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 1);
 
-    const { error } = await supabase.from('private_items').insert({
+    const { data: insertedData, error } = await supabase.from('private_items').insert({
         user_id: user.id,
-        content: content || 'Shared File',
+        content: content || (files && files.length > 0 ? 'Shared File' : ''),
         file_url,
         file_name,
         file_type,
         expires_at: expiresAt.toISOString()
-    });
+    }).select().single();
 
     if (error) {
         addDebugLog(`Db insert error: ${error.message}`);
+        toast.error("Failed to save to private cloud.");
+        return;
+    }
+
+    if (insertedData) {
+        let attachments = [];
+        if (insertedData.file_url) {
+            attachments.push({
+                id: insertedData.id + '-att',
+                fileName: insertedData.file_name || 'file',
+                fileSize: 0, // Real size is on storage, could grab it if needed
+                mimeType: insertedData.file_type || 'application/octet-stream',
+                fileData: insertedData.file_url
+            });
+        }
+
+        const newItem: SharedItem = {
+            id: insertedData.id,
+            type: insertedData.file_url ? 'post' : 'text',
+            scope: 'private',
+            content: insertedData.content,
+            attachments: attachments.length > 0 ? attachments : undefined,
+            senderId: 'Me',
+            timestamp: new Date(insertedData.created_at).getTime(),
+            expiresAt: new Date(insertedData.expires_at).getTime(),
+        };
+
+        // Optimistically add to store so the user sees it instantly
+        addPrivateItem(newItem);
     }
 };
 
 export const deletePrivateItemFromDb = async (id: string) => {
-    const { user, addDebugLog } = useBoardStore.getState();
+    const { user, addDebugLog, deletePrivateItem } = useBoardStore.getState();
     if (!user) return;
+
+    // Optimistic UI Update: remove from standard view instantly
+    deletePrivateItem(id);
+
     const supabase = createClient();
-    // The realtime delete event will remove it from the store
     const { error } = await supabase.from('private_items').delete().eq('id', id).eq('user_id', user.id);
-    if (error) addDebugLog(`Db delete error: ${error.message}`);
+
+    if (error) {
+        addDebugLog(`Db delete error: ${error.message}`);
+        toast.error("Failed to delete from private cloud.");
+    }
 };

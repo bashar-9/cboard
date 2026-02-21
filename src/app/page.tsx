@@ -29,13 +29,14 @@ export default function Home() {
 
       {/* Scrollable board area */}
       <main className="flex-1 overflow-y-auto pb-28">
-        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 h-full flex flex-col justify-center pt-2">
+        <div className={`max-w-6xl mx-auto w-full px-4 sm:px-6 h-full flex flex-col pt-6 ${displayedItems.length === 0 ? 'justify-center' : 'justify-start'
+          }`}>
           <IncomingFilesProgress />
 
           {displayedItems.length === 0 ? (
             isPrivateMode ? <PrivateHowItWorks key="private-guide" /> : <PublicHowItWorks key="public-guide" />
           ) : (
-            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 pt-4">
+            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
               <AnimatePresence mode="popLayout">
                 {displayedItems.map((item) => (
                   <BoardItemCard key={item.id} item={item} />
