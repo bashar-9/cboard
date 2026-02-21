@@ -6,9 +6,12 @@ export async function GET(request: Request) {
     const code = searchParams.get('code');
     const next = searchParams.get('next') ?? '/';
 
-    const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-    const protocol = request.headers.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'development' ? 'http' : 'https');
-    const origin = `${protocol}://${host}`;
+    let origin = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!origin) {
+        const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+        const protocol = request.headers.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'development' ? 'http' : 'https');
+        origin = `${protocol}://${host}`;
+    }
 
     if (code) {
         const supabase = await createClient();
