@@ -2,17 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
+import { sendPrivateItem } from '@/hooks/usePrivateNetwork';
 import { useBoardStore } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
 import { Send, Paperclip, Trash2, File as FileIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE_PUBLIC = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE_PRIVATE = 4 * 1024 * 1024; // 4MB
 
 export function ShareInput() {
     const { sharePost } = useBoardNetwork();
-    const { connectionState } = useBoardStore();
+    const { connectionState, isPrivateMode, user } = useBoardStore();
     const [inputText, setInputText] = useState('');
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isDragging, setIsDragging] = useState(false);
@@ -33,9 +35,10 @@ export function ShareInput() {
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
+        const maxLimit = isPrivateMode ? MAX_FILE_SIZE_PRIVATE : MAX_FILE_SIZE_PUBLIC;
         const validFiles = files.filter(file => {
-            if (file.size > MAX_FILE_SIZE) {
-                toast.error(`File ${file.name} is too large. Max size is 50MB.`);
+            if (file.size > maxLimit) {
+                toast.error(`File ${file.name} is too large. Max size is ${isPrivateMode ? '4MB' : '50MB'}.`);
                 return false;
             }
             return true;
@@ -60,9 +63,10 @@ export function ShareInput() {
         e.preventDefault();
         setIsDragging(false);
         const files = Array.from(e.dataTransfer.files || []);
+        const maxLimit = isPrivateMode ? MAX_FILE_SIZE_PRIVATE : MAX_FILE_SIZE_PUBLIC;
         const validFiles = files.filter(file => {
-            if (file.size > MAX_FILE_SIZE) {
-                toast.error(`File ${file.name} is too large. Max size is 50MB.`);
+            if (file.size > maxLimit) {
+                toast.error(`File ${file.name} is too large. Max size is ${isPrivateMode ? '4MB' : '50MB'}.`);
                 return false;
             }
             return true;
@@ -74,7 +78,17 @@ export function ShareInput() {
 
     const handleShare = () => {
         if (!inputText.trim() && selectedFiles.length === 0) return;
-        sharePost(inputText, selectedFiles);
+
+        if (isPrivateMode) {
+            if (!user) {
+                toast.error("You must be logged in to use Private Mode.");
+                return;
+            }
+            sendPrivateItem(inputText, selectedFiles);
+        } else {
+            sharePost(inputText, selectedFiles);
+        }
+
         setInputText('');
         setSelectedFiles([]);
         // Reset textarea height
@@ -127,8 +141,8 @@ export function ShareInput() {
                 {/* Input bar */}
                 <div
                     className={`flex items-end gap-2 rounded-2xl border transition-all duration-300 backdrop-blur-xl shadow-2xl shadow-black/10 dark:shadow-black/40 ${isDragging
-                            ? 'bg-indigo-500/20 border-indigo-500/50 ring-2 ring-indigo-500/30'
-                            : 'bg-white/90 dark:bg-slate-800/90 border-slate-200/60 dark:border-slate-700/60'
+                        ? 'bg-indigo-500/20 border-indigo-500/50 ring-2 ring-indigo-500/30'
+                        : 'bg-white/90 dark:bg-slate-800/90 border-slate-200/60 dark:border-slate-700/60'
                         }`}
                 >
                     {/* Attach */}

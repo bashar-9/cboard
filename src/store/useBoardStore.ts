@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { type User } from '@supabase/supabase-js';
 
 export type SharedItemType = 'text' | 'file' | 'post';
 
@@ -27,6 +28,7 @@ export interface IncomingFile {
 export interface SharedItem {
     id: string;
     type: SharedItemType;
+    scope?: 'public' | 'private';
     content: string; // Text content or file desc
     attachments?: SharedAttachment[];
     fileData?: string; // legacy base64 / Object URL
@@ -47,8 +49,13 @@ interface BoardState {
 
     // Board Data
     items: SharedItem[];
+    privateItems: SharedItem[];
     incomingFiles: Record<string, IncomingFile>;
     debugLogs: string[];
+
+    // Auth & Private Mode
+    isPrivateMode: boolean;
+    user: User | null;
 
     // Actions
     setMyId: (id: string) => void;
@@ -62,6 +69,12 @@ interface BoardState {
     addItems: (items: SharedItem[]) => void;
     deleteItem: (itemId: string) => void;
     clearItems: () => void;
+
+    addPrivateItem: (item: SharedItem) => void;
+    setPrivateItems: (items: SharedItem[]) => void;
+    deletePrivateItem: (itemId: string) => void;
+    clearPrivateItems: () => void;
+
     removeExpiredItems: () => void;
 
     startIncomingFile: (file: IncomingFile) => void;
@@ -70,6 +83,9 @@ interface BoardState {
     attachFileToItem: (itemId: string, attachmentId: string, fileUrl: string) => void;
 
     addDebugLog: (log: string) => void;
+
+    setIsPrivateMode: (isPrivate: boolean) => void;
+    setUser: (user: User | null) => void;
 }
 
 export const useBoardStore = create<BoardState>()(
@@ -80,8 +96,11 @@ export const useBoardStore = create<BoardState>()(
             roomCode: null,
             peers: [],
             items: [],
+            privateItems: [],
             incomingFiles: {},
             debugLogs: [],
+            isPrivateMode: false,
+            user: null,
 
             setMyId: (id) => set({ myId: id }),
             setConnectionState: (state) => set({ connectionState: state }),
@@ -137,6 +156,22 @@ export const useBoardStore = create<BoardState>()(
 
             clearItems: () => set({ items: [] }),
 
+            addPrivateItem: (item) => set((state) => ({
+                privateItems: state.privateItems.some(i => i.id === item.id)
+                    ? state.privateItems
+                    : [item, ...state.privateItems].sort((a, b) => b.timestamp - a.timestamp)
+            })),
+
+            setPrivateItems: (items) => set({
+                privateItems: items.sort((a, b) => b.timestamp - a.timestamp)
+            }),
+
+            deletePrivateItem: (itemId) => set((state) => ({
+                privateItems: state.privateItems.filter(item => item.id !== itemId)
+            })),
+
+            clearPrivateItems: () => set({ privateItems: [] }),
+
             removeExpiredItems: () => set((state) => {
                 const now = Date.now();
                 return {
@@ -190,6 +225,9 @@ export const useBoardStore = create<BoardState>()(
             addDebugLog: (log) => set((state) => ({
                 debugLogs: [`[${new Date().toISOString().split('T')[1].slice(0, -1)}] ${log}`, ...state.debugLogs].slice(0, 50)
             })),
+
+            setIsPrivateMode: (isPrivate) => set({ isPrivateMode: isPrivate }),
+            setUser: (user) => set({ user }),
         }),
         {
             name: 'share-board-storage',

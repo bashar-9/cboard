@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
+import { deletePrivateItemFromDb } from '@/hooks/usePrivateNetwork';
 import { useBoardStore, SharedItem } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
-import { Copy, Clock, Timer, Trash2, CheckCircle2, Download, File as FileIcon } from 'lucide-react';
+import { Copy, Clock, Timer, Trash2, CheckCircle2, Download, File as FileIcon, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { ItemDetailModal } from './ItemDetailModal';
@@ -49,12 +50,16 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
-    const handleDelete = (id: string) => {
-        deleteItem(id);
+    const handleDelete = (id: string, scope?: string) => {
+        if (scope === 'private') {
+            deletePrivateItemFromDb(id);
+        } else {
+            deleteItem(id);
+        }
         toast.success('Item deleted');
     };
 
-    const isMine = item.senderId === myId;
+    const isMine = item.senderId === myId || item.scope === 'private';
     const needsTruncation = item.content && item.content.length > TEXT_CLAMP_LENGTH;
     const displayText = needsTruncation
         ? item.content.slice(0, TEXT_CLAMP_LENGTH).trimEnd() + '…'
@@ -94,7 +99,7 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer transition-all duration-200"
-                                onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                                onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.scope); }}
                                 title="Delete"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -105,9 +110,9 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
                     {/* Metadata */}
                     <div className="flex items-center gap-1.5 px-3.5 pt-3 pb-1.5 text-[11px] text-slate-400 dark:text-slate-500">
                         <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${isMine ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'bg-slate-500/15 dark:bg-slate-500/20 text-slate-500 dark:text-slate-400'}`}>
-                            {isMine ? 'Y' : 'S'}
+                            {item.scope === 'private' ? <Lock className="w-2.5 h-2.5" /> : (isMine ? 'Y' : 'S')}
                         </div>
-                        <span className="font-medium text-slate-600 dark:text-slate-400">{isMine ? 'You' : 'Someone'}</span>
+                        <span className="font-medium text-slate-600 dark:text-slate-400">{item.scope === 'private' ? 'Private' : (isMine ? 'You' : 'Someone')}</span>
                         <span className="text-slate-300 dark:text-slate-600">·</span>
                         <Clock className="w-3 h-3 shrink-0 text-slate-300 dark:text-slate-600" />
                         <span>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

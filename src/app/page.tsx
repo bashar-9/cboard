@@ -2,18 +2,23 @@
 
 import { useBoardStore } from '@/store/useBoardStore';
 import { useBoardNetworkInit } from '@/hooks/useBoardNetwork';
+import { usePrivateNetworkInit } from '@/hooks/usePrivateNetwork';
 import { Header } from '@/components/board/Header';
 import { ShareInput } from '@/components/board/ShareInput';
 import { IncomingFilesProgress } from '@/components/board/IncomingFilesProgress';
 import { BoardItemCard } from '@/components/board/BoardItemCard';
-import { HowItWorks } from '@/components/board/HowItWorks';
+import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
+import { PrivateHowItWorks } from '@/components/board/PrivateHowItWorks';
 import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 
 export default function Home() {
-  const { items, myId, roomCode, debugLogs } = useBoardStore();
+  const { items, privateItems, myId, roomCode, debugLogs, isPrivateMode } = useBoardStore();
 
   useBoardNetworkInit();
+  usePrivateNetworkInit();
+
+  const displayedItems = isPrivateMode ? privateItems : items;
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 selection:bg-indigo-200 dark:selection:bg-indigo-900 transition-colors duration-300 relative overflow-hidden">
@@ -24,15 +29,15 @@ export default function Home() {
 
       {/* Scrollable board area */}
       <main className="flex-1 overflow-y-auto pb-28">
-        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 pt-6">
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 h-full flex flex-col justify-center pt-2">
           <IncomingFilesProgress />
 
-          {items.length === 0 ? (
-            <HowItWorks />
+          {displayedItems.length === 0 ? (
+            isPrivateMode ? <PrivateHowItWorks key="private-guide" /> : <PublicHowItWorks key="public-guide" />
           ) : (
-            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
+            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 pt-4">
               <AnimatePresence mode="popLayout">
-                {items.map((item) => (
+                {displayedItems.map((item) => (
                   <BoardItemCard key={item.id} item={item} />
                 ))}
               </AnimatePresence>

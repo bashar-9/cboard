@@ -32,19 +32,23 @@
 | 2026-02-21 | UI/UX | Created "How It Works" Onboarding Component for the initial empty board state. |
 | 2026-02-21 | Feature | Added global "Delete Item" functionality broadcasting across the WebRTC network. |
 | 2026-02-21 | Bug Fix | Fixed cross-browser sync and file persistence (base64 data URI conversion, proper data channel timing). |
+| 2026-02-21 | UI/UX | Mobile Responsiveness completed (layout looks perfect on mobile devices). |
+| 2026-02-21 | Feature | v2: Private Sync Mode implemented using Supabase Realtime Database. Redesigned Auth Page built. |
+| 2026-02-21 | Integration | Google OAuth configured properly complete with API callback route exchanging the code for a browser session. |
+| 2026-02-21 | Architecture | Implemented `AuthProvider.tsx` layout wrapper to act as a global listener for session state changes and syncing Zustand without page refreshes. Fixed Private Mode Connection UI ('Synced'). |
+| 2026-02-21 | UI/UX | Refactored `HowItWorks` onboarding into `PublicHowItWorks` and `PrivateHowItWorks` to fix staggered animation variants and CSS overflow layout bugs. Built new tabbed onboarding modal in `Header.tsx`. |
 
 ## In Progress
 
 | Feature | Status | Notes |
 |------|--------|-------|
-| Mobile Responsiveness | 🟢 Active | Ensuring the layout looks perfect on mobile devices |
+| Stabilization | 🟢 Active | Monitoring for any edge cases in Private Sync Mode transitions. |
 
 ## Future Versions
 
 | Version | Features |
 |---------|----------|
-| v2 | Device-to-device direct send (AirDrop-style targeting) |
-| v3 | Private mode with authentication |
+| v3 | Device-to-device direct send (AirDrop-style targeting over LAN) |
 | v4 | Native apps (Android, Windows, Linux) via React Native / Electron or Tauri |
 
 ---

@@ -8,8 +8,9 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 - **Deployment:** Vercel
 - **Styling & Physics:** Tailwind CSS + Shadcn/ui + Framer Motion
 - **State Management:** Zustand
-- **Networking/Data Transfer:** WebRTC (Peer-to-Peer) for direct, serverless file/text transfer on the local network.
-- **Signaling:** Pusher Channels (or similar lightweight WebSocket service) for initial device discovery and WebRTC handshake.
+- **Networking/Data Transfer (Public Mode):** WebRTC (Peer-to-Peer) for direct, serverless file/text transfer on the local network.
+- **Signaling (Public Mode):** Pusher Channels for initial device discovery and WebRTC handshake.
+- **Backend & Auth (Private Mode):** Supabase (Auth, Postgres DB, Database Webhooks/Realtime) for persistent, secure cross-device sync.
 
 ## Key Mechanisms
 ### 1. Peer Discovery & Grouping
@@ -26,9 +27,14 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 - **Persistent Identity:** A persistent device ID is stored in `localStorage`. This prevents the "Sender" attribution resolving to "Someone" when a user refreshes the page and gets assigned a new Pusher socket ID.
 - **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC. Real-time actions, such as item deletion, are broadcasted globally to ensure all peers remain in sync.
 
+### 2. Private Mode & Authentication
+- **OAuth Providers:** Google OAuth enables seamless login. Next.js server-side intercept tunnels (`/auth/callback`) exchange query `?code` tokens for secure SSR user sessions, redirecting them back to the app cleanly.
+- **State Hydration:** A global `<AuthProvider>` wrapper at the root layout listens dynamically for Supabase `onAuthStateChange` events, linking remote identity directly into the local `useBoardStore` Zustand store without full page lifecycles.
+- **Data Sync & RLS:** When toggled to Private Mode, the client bypasses WebRTC and reads/writes exclusively to a `private_items` Supabase table. Row Level Security limits visibility strictly to the authenticated `user_id`. Supabase Realtime subscriptions replace Pusher to keep UI tabs concurrently perfectly in sync.
+
 ## Future Scalability Considerations
-- **Private Mode:** Add authentication to allow users to have private, synchronized clipboards across their own devices only.
-- **Native Apps:** Build mobile (iOS/Android) and desktop (Windows/Mac/Linux) apps using frameworks like React Native or Electron/Tauri, which natively support WebRTC and can access system-level clipboards and file systems.
+- **Native Apps:** Build mobile (iOS/Android) and desktop (Windows/Mac/Linux) apps using frameworks like React Native or Electron/Tauri. These will integrate deeply with the OS Clipboard API (Direct OS Clipboard Integration) to allow true "magic" copy-paste without opening the app, reading directly from the Private Mode Supabase queue.
+- **Direct Device Targeting:** AirDrop-style targeting over LAN for specific public users.
 
 ## UI/UX & Styling Guidelines
 *(Reference: `ui-ux-pro-max` skill standards)*
@@ -57,26 +63,34 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 ```text
 src/
 ├── app/
+│   ├── auth/                 # Auth UI and Callback routing
+│   │   ├── callback/         # Next.js API route to exchange OAuth Code
+│   │   └── page.tsx          # Authentication Form (Google Auth + Email)
 │   ├── globals.css           # Global Tailwind CSS and utilities
-│   ├── layout.tsx            # Root layout (Theme provider setup)
+│   ├── layout.tsx            # Root layout (Theme provider setup + AuthProvider wrap)
 │   └── page.tsx              # Main Board view (flex column, masonry grid)
 ├── components/
 │   ├── board/
 │   │   ├── BoardItemCard.tsx         # Card with truncation + opens detail modal
-│   │   ├── Header.tsx                # App header & connection status
-│   │   ├── HowItWorks.tsx            # Initial empty state onboarding guide
+│   │   ├── Header.tsx                # App header & connection status (Synced/Offline logic)
+│   │   ├── PublicHowItWorks.tsx      # Initial empty state onboarding guide for peer-to-peer sharing
+│   │   ├── PrivateHowItWorks.tsx     # Initial empty state onboarding guide for cloud sync
 │   │   ├── IncomingFilesProgress.tsx  # File download progress bars
 │   │   ├── ItemDetailModal.tsx        # Google Keep-style detail overlay
 │   │   └── ShareInput.tsx            # Bottom-pinned compact input bar
+│   ├── providers/
+│   │   └── AuthProvider.tsx          # Global Supabase Session Context Hydration
 │   └── ui/                   # Shadcn UI generic components
 ├── hooks/
-│   └── useBoardNetwork.ts    # WebRTC and Pusher networking logic
+│   ├── useBoardNetwork.ts    # WebRTC and Pusher networking logic
+│   └── usePrivateNetwork.ts  # Supabase Realtime synchronization layer
 ├── lib/
 │   ├── pusher.ts             # Pusher client singleton
+│   ├── supabase/             # Supabase Client Wrappers (browser/server/middleware)
 │   ├── utils.ts              # Tailwind/general utils
 │   └── webrtc.ts             # Custom RTCPeerConnection wrapper
 └── store/
-    └── useBoardStore.ts      # Zustand global state (Items, UI states)
+    └── useBoardStore.ts      # Zustand global state (Items, UI states, User Auth context)
 ```
 
 ## Project Files Reference

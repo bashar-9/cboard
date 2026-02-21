@@ -474,6 +474,13 @@ export function useBoardNetwork() {
     };
 
     const deleteItem = (itemId: string) => {
+        if (store.isPrivateMode && store.user) {
+            import('@/hooks/usePrivateNetwork').then(mod => {
+                mod.deletePrivateItemFromDb(itemId);
+            });
+            return;
+        }
+
         if (!webrtcInstance || !store.myId) return;
 
         store.deleteItem(itemId);
