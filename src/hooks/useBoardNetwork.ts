@@ -349,7 +349,7 @@ export function useBoardNetworkInit() {
                                     fileData: fileUrl,
                                     senderId: incoming.senderId || '',
                                     timestamp: Date.now(),
-                                    expiresAt: Date.now() + 60 * 60 * 1000
+                                    expiresAt: Date.now() + 15 * 60 * 1000
                                 });
                             }
                         } catch (err) {
@@ -402,7 +402,7 @@ export function useBoardNetwork() {
             attachments: attachments.length > 0 ? attachments : undefined,
             senderId: store.myId,
             timestamp: Date.now(),
-            expiresAt: Date.now() + 60 * 60 * 1000
+            expiresAt: Date.now() + 15 * 60 * 1000
         };
 
         store.addItem(item);

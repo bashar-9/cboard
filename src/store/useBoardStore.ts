@@ -98,7 +98,7 @@ export const useBoardStore = create<BoardState>()(
             addItem: (item) => set((state) => {
                 // Compatibility for old items missing expiresAt
                 if (!item.expiresAt) {
-                    item.expiresAt = item.timestamp + 60 * 60 * 1000;
+                    item.expiresAt = item.timestamp + 15 * 60 * 1000;
                 }
                 return {
                     // Add to top of the list, avoid duplicates by ID just in case
@@ -117,7 +117,7 @@ export const useBoardStore = create<BoardState>()(
                     if (!existingIds.has(item.id) && !seenNewIds.has(item.id)) {
                         // Compatibility for old items missing expiresAt
                         if (!item.expiresAt) {
-                            item.expiresAt = item.timestamp + 60 * 60 * 1000;
+                            item.expiresAt = item.timestamp + 15 * 60 * 1000;
                         }
                         uniqueNewItems.push(item);
                         seenNewIds.add(item.id);

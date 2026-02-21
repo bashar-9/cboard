@@ -24,7 +24,7 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 - **WebRTC Signaling Pattern:** Uses "Perfect Negotiation" to avoid Glare/State errors when peers connect. A deterministic comparison of string User IDs decides which device is "polite" (waits for offer) vs "impolite" (sends offer). WebRTC signaling is serialized with a Promise chain to avoid `InvalidStateError` race conditions caused by network or signaling duplicates.
 - **Network Singletons:** Active `WebRTCManager` and Pusher `Channel` references are stored as module-level singletons (outside React component scopes) to gracefully handle React Strict Mode double hooks avoiding duplicated peer handshakes.
 - **Persistent Identity:** A persistent device ID is stored in `localStorage`. This prevents the "Sender" attribution resolving to "Someone" when a user refreshes the page and gets assigned a new Pusher socket ID.
-- **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC.
+- **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC. Real-time actions, such as item deletion, are broadcasted globally to ensure all peers remain in sync.
 
 ## Future Scalability Considerations
 - **Private Mode:** Add authentication to allow users to have private, synchronized clipboards across their own devices only.
@@ -64,6 +64,7 @@ src/
 │   ├── board/
 │   │   ├── BoardItemCard.tsx         # Card with truncation + opens detail modal
 │   │   ├── Header.tsx                # App header & connection status
+│   │   ├── HowItWorks.tsx            # Initial empty state onboarding guide
 │   │   ├── IncomingFilesProgress.tsx  # File download progress bars
 │   │   ├── ItemDetailModal.tsx        # Google Keep-style detail overlay
 │   │   └── ShareInput.tsx            # Bottom-pinned compact input bar

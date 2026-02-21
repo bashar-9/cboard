@@ -29,6 +29,9 @@
 | 2026-02-20 | Multi-File Payload | Refactored WebRTC network layer to transmit bundled "Posts" containing Text and multiple File blobs under a single parent Item ID. |
 | 2026-02-20 | Bug Fix | Resolved duplicate WebRTC connection initialization bug. Pushed network singletons outside React component scope to mitigate React Strict Mode remount issues. |
 | 2026-02-20 | Home Page Redesign | Masonry board layout (CSS columns), bottom-pinned Gemini-style input bar, Google Keep-style detail modal with text truncation, attachment downloads, and "Download All". New component: `ItemDetailModal.tsx`. |
+| 2026-02-21 | UI/UX | Created "How It Works" Onboarding Component for the initial empty board state. |
+| 2026-02-21 | Feature | Added global "Delete Item" functionality broadcasting across the WebRTC network. |
+| 2026-02-21 | Bug Fix | Fixed cross-browser sync and file persistence (base64 data URI conversion, proper data channel timing). |
 
 ## In Progress
 
