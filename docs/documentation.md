@@ -28,9 +28,10 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 - **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC. Real-time actions, such as item deletion, are broadcasted globally to ensure all peers remain in sync.
 
 ### 2. Private Mode & Authentication
-- **OAuth Providers:** Google OAuth enables seamless login. Next.js server-side intercept tunnels (`/auth/callback`) exchange query `?code` tokens for secure SSR user sessions, redirecting them back to the app cleanly.
+- **OAuth Providers:** Google OAuth and Magic Link Email login are supported. Next.js server-side intercept tunnels (`/auth/callback`) exchange query `?code` tokens for secure SSR user sessions. The callback uses native `new URL(request.url)` parsing to handle Vercel proxy headers flawlessly during domain redirects.
 - **State Hydration:** A global `<AuthProvider>` wrapper at the root layout listens dynamically for Supabase `onAuthStateChange` events, linking remote identity directly into the local `useBoardStore` Zustand store without full page lifecycles.
-- **Data Sync & RLS:** When toggled to Private Mode, the client bypasses WebRTC and reads/writes exclusively to a `private_items` Supabase table. Row Level Security limits visibility strictly to the authenticated `user_id`. Supabase Realtime subscriptions replace Pusher to keep UI tabs concurrently perfectly in sync.
+- **Data Sync, RLS, & Keys:** Utilizing modern `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` strings (no legacy anon keys). When toggled to Private Mode, the client bypasses WebRTC and reads/writes exclusively to a `private_items` Supabase table. Row Level Security limits visibility strictly to the authenticated `user_id`.
+- **Realtime Webhooks & Optimistic UI:** Supabase Realtime subscriptions replace Pusher to keep UI tabs concurrently perfectly in sync. Because the DB uses RLS, `REPLICA IDENTITY FULL` is configured on the `private_items` table so that `DELETE` webhook events carry the `user_id` required for RLS rule validation. The frontend utilizes **Optimistic UI Updates** that natively inject or remove rows from the local Zustand store the instant the REST insert/delete is fired via `.select().single()`, achieving zero-latency visually before the Webhook round-trip finishes.
 
 ## Future Scalability Considerations
 - **Native Apps:** Build mobile (iOS/Android) and desktop (Windows/Mac/Linux) apps using frameworks like React Native or Electron/Tauri. These will integrate deeply with the OS Clipboard API (Direct OS Clipboard Integration) to allow true "magic" copy-paste without opening the app, reading directly from the Private Mode Supabase queue.
@@ -46,8 +47,9 @@ A local network text and file sharing service (similar to Apple's Universal Clip
 
 ### Specifics
 - **Theme:** Clean, modern design (support for both Light and Dark modes). Consider a "glassmorphism" aesthetic for a premium feel.
-- **Layout:** Google Keep-style masonry board with CSS columns (`columns-1 sm:2 lg:3 xl:4`). Input bar pinned to bottom of viewport (Gemini-style).
+- **Layout:** Google Keep-style masonry board with CSS columns (`columns-1 sm:2 lg:3 xl:4`). The container uses `justify-start` flex-box rules so items dynamically stack from the top-left downward instead of vertically centering. Input bar is pinned to the bottom of the viewport (Gemini-style).
 - **Cards:** Truncated at 280 chars with "View more" hint. Clicking any card opens a detail modal overlay (Google Keep-style) with full text, attachments, and download options.
+- **Onboarding / Help:** Split Tabbed Modal (Public/Private) accessed from the top navigation bar to guide users. Dynamically hides when the board is populated to reduce visual clutter.
 - **Interactions:** 
   - Smooth transitions (150-300ms) for all state changes.
   - Hover states on interactive elements without layout shifts.

@@ -35,8 +35,12 @@
 | 2026-02-21 | UI/UX | Mobile Responsiveness completed (layout looks perfect on mobile devices). |
 | 2026-02-21 | Feature | v2: Private Sync Mode implemented using Supabase Realtime Database. Redesigned Auth Page built. |
 | 2026-02-21 | Integration | Google OAuth configured properly complete with API callback route exchanging the code for a browser session. |
-| 2026-02-21 | Architecture | Implemented `AuthProvider.tsx` layout wrapper to act as a global listener for session state changes and syncing Zustand without page refreshes. Fixed Private Mode Connection UI ('Synced'). |
 | 2026-02-21 | UI/UX | Refactored `HowItWorks` onboarding into `PublicHowItWorks` and `PrivateHowItWorks` to fix staggered animation variants and CSS overflow layout bugs. Built new tabbed onboarding modal in `Header.tsx`. |
+| 2026-02-21 | Security | Migrated entirely away from legacy Supabase `ANON_KEY` to modern `PUBLISHABLE_KEY` patterns across SSR, Middleware, and Client configurations for security and rotation support. |
+| 2026-02-21 | Bug Fix | Resolved Production Login Redirect loop by implementing standard Next.js `new URL(request.url)` parsing inside the `auth/callback` route, ensuring OAuth tokens are sent to Vercel domains correctly. |
+| 2026-02-21 | Bug Fix | Diagnosed missing Realtime `DELETE` propagation for Private Mode. Used Supabase MCP to remotely run `ALTER TABLE private_items REPLICA IDENTITY FULL`, fixing RLS filter webhook drops instantly. |
+| 2026-02-21 | Bug Fix | Fixed Masonry Grid layout bug where empty states triggered a `justify-center` flex collapse by decoupling grid loading from generic item states, restoring "Google Keep" style masonry anchoring. |
+| 2026-02-21 | Optimization | Implemented instant 'Optimistic' UI Updates for sending and deleting Private Items so the UI reflects changes instantly before the websocket response fires. |
 
 ## In Progress
 
