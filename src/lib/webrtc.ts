@@ -18,6 +18,7 @@ export class WebRTCManager {
     public onSignal?: (msg: SignalMessage) => void;
     public onData?: (peerId: string, data: unknown) => void;
     public onConnect?: (peerId: string) => void;
+    public onChannelOpen?: (peerId: string) => void;
     public onDisconnect?: (peerId: string) => void;
 
     constructor(myId: string) {
@@ -142,6 +143,10 @@ export class WebRTCManager {
         this.channels.set(peerId, channel);
         // Needed for large file transfers later
         channel.binaryType = 'arraybuffer';
+
+        channel.onopen = () => {
+            this.onChannelOpen?.(peerId);
+        };
 
         channel.onmessage = (event) => {
             this.onData?.(peerId, event.data);

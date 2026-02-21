@@ -193,8 +193,29 @@ export const useBoardStore = create<BoardState>()(
         }),
         {
             name: 'share-board-storage',
-            // Only keep the text items, large files crash localStorage
-            partialize: (state) => ({ items: state.items.filter(i => i.type === 'text') } as Partial<BoardState>),
+            // Persist text and post items. Strip large file data to stay within localStorage limits.
+            partialize: (state) => {
+                const MAX_ATTACHMENT_DATA_SIZE = 4 * 1024 * 1024; // 4MB base64 budget per item
+                const persistedItems = state.items
+                    .filter(i => i.type === 'text' || i.type === 'post')
+                    .map(item => {
+                        if (item.type === 'post' && item.attachments) {
+                            // Calculate total attachment data size
+                            const totalSize = item.attachments.reduce(
+                                (sum, att) => sum + (att.fileData?.length || 0), 0
+                            );
+                            if (totalSize > MAX_ATTACHMENT_DATA_SIZE) {
+                                // Too large for localStorage — keep metadata, strip data
+                                return {
+                                    ...item,
+                                    attachments: item.attachments.map(att => ({ ...att, fileData: undefined }))
+                                };
+                            }
+                        }
+                        return item;
+                    });
+                return { items: persistedItems } as Partial<BoardState>;
+            },
             onRehydrateStorage: () => (state) => {
                 if (state) {
                     state.removeExpiredItems();
