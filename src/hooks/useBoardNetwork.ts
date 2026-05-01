@@ -124,11 +124,11 @@ export function useBoardNetworkInit() {
 
                         // 2. Sync legacy single files
                         const fileItems = currentItems.filter(i => i.type === 'file' && i.fileData);
-                        for (const item of fileItems) {
+                        await Promise.all(fileItems.map(async (item) => {
                             try {
                                 if (!isFetchable(item.fileData)) {
                                     store.addDebugLog(`Skipping unfetchable file ${item.fileName}`);
-                                    continue;
+                                    return;
                                 }
                                 const blob = await fetch(item.fileData!).then(r => r.blob());
                                 const arrayBuffer = await blob.arrayBuffer();
@@ -155,52 +155,54 @@ export function useBoardNetworkInit() {
                                 console.error("Failed to sync file to peer", err);
                                 store.addDebugLog(`Failed to sync file ${item.fileName}: ${err}`);
                             }
-                        }
+                        }));
 
                         // 3. Sync post attachments
                         const postItemsWithAttachments = currentItems.filter(i => i.type === 'post' && i.attachments && i.attachments.length > 0);
-                        for (const item of postItemsWithAttachments) {
-                            for (const att of item.attachments!) {
-                                try {
-                                    if (!isFetchable(att.fileData)) {
-                                        store.addDebugLog(`Skipping unfetchable attachment ${att.fileName}`);
-                                        continue;
-                                    }
-                                    const blob = await fetch(att.fileData!).then(r => r.blob());
-                                    const arrayBuffer = await blob.arrayBuffer();
-                                    const totalChunks = Math.ceil(arrayBuffer.byteLength / 64000);
+                        const allAttachments = postItemsWithAttachments.flatMap(item =>
+                            item.attachments!.map(att => ({ item, att }))
+                        );
 
-                                    store.addDebugLog(`Syncing file ${att.fileName} to ${peerId}`);
-                                    rtc.sendTo(peerId, JSON.stringify({
-                                        type: 'file-start',
-                                        fileId: att.id,
-                                        itemId: item.id,
-                                        fileName: att.fileName,
-                                        fileSize: att.fileSize,
-                                        mimeType: att.mimeType,
-                                        totalChunks
-                                    }));
-
-                                    const idBytes = new TextEncoder().encode(att.id.padEnd(36, ' ').substring(0, 36));
-                                    let offset = 0;
-                                    while (offset < arrayBuffer.byteLength) {
-                                        const chunk = arrayBuffer.slice(offset, offset + 64000);
-                                        const chunkData = new Uint8Array(chunk);
-                                        const message = new Uint8Array(36 + chunkData.length);
-                                        message.set(idBytes, 0);
-                                        message.set(chunkData, 36);
-
-                                        rtc.sendTo(peerId, message.buffer);
-                                        offset += 64000;
-                                        await new Promise(r => setTimeout(r, 5));
-                                    }
-                                    rtc.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: att.id, itemId: item.id }));
-                                } catch (err) {
-                                    console.error("Failed to sync attachment to peer", err);
-                                    store.addDebugLog(`Failed to sync attachment ${att.fileName}: ${err}`);
+                        await Promise.all(allAttachments.map(async ({ item, att }) => {
+                            try {
+                                if (!isFetchable(att.fileData)) {
+                                    store.addDebugLog(`Skipping unfetchable attachment ${att.fileName}`);
+                                    return;
                                 }
+                                const blob = await fetch(att.fileData!).then(r => r.blob());
+                                const arrayBuffer = await blob.arrayBuffer();
+                                const totalChunks = Math.ceil(arrayBuffer.byteLength / 64000);
+
+                                store.addDebugLog(`Syncing file ${att.fileName} to ${peerId}`);
+                                rtc.sendTo(peerId, JSON.stringify({
+                                    type: 'file-start',
+                                    fileId: att.id,
+                                    itemId: item.id,
+                                    fileName: att.fileName,
+                                    fileSize: att.fileSize,
+                                    mimeType: att.mimeType,
+                                    totalChunks
+                                }));
+
+                                const idBytes = new TextEncoder().encode(att.id.padEnd(36, ' ').substring(0, 36));
+                                let offset = 0;
+                                while (offset < arrayBuffer.byteLength) {
+                                    const chunk = arrayBuffer.slice(offset, offset + 64000);
+                                    const chunkData = new Uint8Array(chunk);
+                                    const message = new Uint8Array(36 + chunkData.length);
+                                    message.set(idBytes, 0);
+                                    message.set(chunkData, 36);
+
+                                    rtc.sendTo(peerId, message.buffer);
+                                    offset += 64000;
+                                    await new Promise(r => setTimeout(r, 5));
+                                }
+                                rtc.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: att.id, itemId: item.id }));
+                            } catch (err) {
+                                console.error("Failed to sync attachment to peer", err);
+                                store.addDebugLog(`Failed to sync attachment ${att.fileName}: ${err}`);
                             }
-                        }
+                        }));
                     };
                     rtc.onDisconnect = (peerId) => {
                         store.addDebugLog(`WebRTC Disconnected from ${peerId}`);
