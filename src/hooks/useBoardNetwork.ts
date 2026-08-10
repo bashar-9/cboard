@@ -47,6 +47,10 @@ export function getNetworkMode(hostname: string): 'local' | 'online' {
         : 'online';
 }
 
+export function getOnlineWaitingState(role: 'host' | 'receiver' | null) {
+    return role === 'host' ? 'hosting' as const : 'joining' as const;
+}
+
 function generateId(): string {
     if (typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID().padEnd(ID_LENGTH, ' ').slice(0, ID_LENGTH);
@@ -222,10 +226,8 @@ function setupPeer(myId: string, peerId: string, polite: boolean) {
             if (useBoardStore.getState().peers.length > 0) return;
             currentStore.setConnectionState('connecting');
             currentStore.setLocalSession({
-                pairingState: currentStore.networkMode === 'online' && currentStore.localRole === 'host'
-                    ? 'hosting'
-                    : currentStore.networkMode === 'online'
-                        ? 'joining'
+                pairingState: currentStore.networkMode === 'online'
+                    ? getOnlineWaitingState(currentStore.localRole)
                     : currentStore.localRole === 'host' ? 'hosting' : 'joining',
                 pairingError: currentStore.networkMode === 'local' && currentStore.localRole === 'receiver'
                     ? 'Host disconnected. Waiting to reconnect.'
@@ -514,7 +516,11 @@ function startOnlineConnection(isActive: () => boolean) {
             channel.bind('pusher:subscription_succeeded', (members: PresenceMembers) => {
                 if (!isActive() || !isSafeId(members.myID)) return;
                 store.setMyId(members.myID);
-                store.setLocalSession({ pairingState: 'joining', pairingError: null });
+                const currentSession = useBoardStore.getState();
+                store.setLocalSession({
+                    pairingState: getOnlineWaitingState(currentSession.localRole),
+                    pairingError: null,
+                });
                 members.each((member) => {
                     if (member.id !== members.myID && isSafeId(member.id)) {
                         setupPeer(members.myID, member.id, members.myID > member.id);
@@ -534,8 +540,9 @@ function startOnlineConnection(isActive: () => boolean) {
                 webrtcInstance?.removePeer(member.id);
                 store.removePeer(member.id);
                 if (useBoardStore.getState().peers.length === 0) {
+                    const currentSession = useBoardStore.getState();
                     store.setConnectionState('connecting');
-                    store.setLocalSession({ pairingState: 'joining' });
+                    store.setLocalSession({ pairingState: getOnlineWaitingState(currentSession.localRole) });
                 }
             });
 
