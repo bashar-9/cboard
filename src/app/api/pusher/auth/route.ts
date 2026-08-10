@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPusherServer } from '@/lib/pusher';
-import { getClientIp, getRoomName, verifyUserId } from '@/lib/server-utils';
+import { getClientIp, getRoomName, verifyRoomAccess, verifyUserId } from '@/lib/server-utils';
 
 export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin');
@@ -36,16 +36,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid authorization request.' }, { status: 400 });
     }
 
-    const expectedRoom = getRoomName(getClientIp(request));
-    if (channelName !== expectedRoom) {
-        return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
-    }
-
     const cookieStore = await cookies();
     const token = cookieStore.get('user_id_token')?.value;
     const userId = token ? verifyUserId(token) : null;
     if (!userId) {
         return NextResponse.json({ error: 'Start a board session first.' }, { status: 401 });
+    }
+
+    if (channelName.startsWith('presence-private-')) {
+        const roomToken = cookieStore.get('room_access_token')?.value;
+        const access = roomToken ? verifyRoomAccess(roomToken) : null;
+        if (!access || access.roomName !== channelName || access.userId !== userId) {
+            return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
+        }
+    } else if (channelName !== getRoomName(getClientIp(request))) {
+        return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
     }
 
     try {

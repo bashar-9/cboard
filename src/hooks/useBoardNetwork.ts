@@ -17,6 +17,7 @@ let webrtcInstance: WebRTCManager | null = null;
 let webrtcOwnerId: string | null = null;
 let signalSender: ((signal: SignalMessage) => void) | null = null;
 let onlineChannelInstance: PresenceChannel | null = null;
+let onlinePrivateJoin: ((pin: string) => Promise<void>) | null = null;
 
 interface PresenceMember {
     id: string;
@@ -137,11 +138,20 @@ export function submitPairingPin(pin: string) {
         return;
     }
     useBoardStore.getState().setLocalSession({ pairingState: 'joining', pairingError: null });
+    if (useBoardStore.getState().networkMode === 'online' && onlinePrivateJoin) {
+        void onlinePrivateJoin(pin);
+        return;
+    }
     sendSocketMessage({ type: 'join', pin });
 }
 
 export function setLocalRoomPrivacy(privacy: 'public' | 'private') {
-    useBoardStore.getState().setLocalSession({ localRoomPrivacy: privacy, pairingError: null });
+    const store = useBoardStore.getState();
+    store.setLocalSession({ localRoomPrivacy: privacy, pairingError: null });
+    if (store.networkMode === 'online') {
+        window.location.assign(privacy === 'private' ? '/?create=private' : '/');
+        return;
+    }
     sendSocketMessage({ type: 'set-room-privacy', privacy });
 }
 
@@ -209,8 +219,10 @@ function setupPeer(myId: string, peerId: string, polite: boolean) {
             if (useBoardStore.getState().peers.length > 0) return;
             currentStore.setConnectionState('connecting');
             currentStore.setLocalSession({
-                pairingState: currentStore.networkMode === 'online'
-                    ? 'joining'
+                pairingState: currentStore.networkMode === 'online' && currentStore.localRole === 'host'
+                    ? 'hosting'
+                    : currentStore.networkMode === 'online'
+                        ? 'joining'
                     : currentStore.localRole === 'host' ? 'hosting' : 'joining',
                 pairingError: currentStore.networkMode === 'local' && currentStore.localRole === 'receiver'
                     ? 'Host disconnected. Waiting to reconnect.'
@@ -461,25 +473,28 @@ function startLocalConnection(isActive: () => boolean) {
 
 function startOnlineConnection(isActive: () => boolean) {
     const store = useBoardStore.getState();
+    const searchParams = new URLSearchParams(window.location.search);
+    const inviteToken = searchParams.get('invite');
+    const createPrivate = searchParams.get('create') === 'private';
     store.setLocalSession({
         networkMode: 'online',
-        localRole: null,
-        pairingState: 'joining',
+        localRoomPrivacy: inviteToken || createPrivate ? 'private' : 'public',
+        localRole: inviteToken ? 'receiver' : createPrivate ? 'host' : null,
+        pairingState: inviteToken ? 'needs-pin' : createPrivate ? 'hosting' : 'joining',
         pairingError: null,
     });
     let roomName: string | null = null;
     let pusher: ReturnType<typeof getPusherClient> | null = null;
 
-    void (async () => {
-        try {
-            const response = await fetch('/api/room', { cache: 'no-store' });
-            if (!response.ok) throw new Error('Could not create the public room.');
-            const session: unknown = await response.json();
-            if (!isActive() || !isRecord(session) || !isSafeId(session.userId) || typeof session.roomName !== 'string') return;
+    const connectSession = (session: unknown) => {
+        if (!isActive() || !isRecord(session) || !isSafeId(session.userId) || typeof session.roomName !== 'string') {
+            throw new Error('The room response was invalid.');
+        }
 
-            roomName = session.roomName;
-            store.setRoomCode(roomName);
-            store.setMyId(session.userId);
+        roomName = session.roomName;
+        store.setRoomCode(roomName);
+        store.setMyId(session.userId);
+        try {
             pusher = getPusherClient();
             const channel = pusher.subscribe(roomName) as PresenceChannel;
             onlineChannelInstance = channel;
@@ -535,18 +550,79 @@ function startOnlineConnection(isActive: () => boolean) {
 
             channel.bind('pusher:subscription_error', () => {
                 store.setConnectionState('disconnected');
-                store.setLocalSession({ pairingState: 'error', pairingError: 'Could not join the online public room.' });
+                store.setLocalSession({ pairingState: 'error', pairingError: 'Could not join this online room.' });
             });
         } catch (error) {
-            store.setConnectionState('disconnected');
-            store.setLocalSession({
-                pairingState: 'error',
-                pairingError: error instanceof Error ? error.message : 'Online public room is unavailable.',
-            });
+            throw error;
+        }
+    };
+
+    const showError = (error: unknown, fallback: string) => {
+        store.setConnectionState('disconnected');
+        store.setLocalSession({
+            pairingState: inviteToken ? 'needs-pin' : 'error',
+            pairingError: error instanceof Error ? error.message : fallback,
+        });
+    };
+
+    void (async () => {
+        try {
+            if (inviteToken) {
+                onlinePrivateJoin = async (pin: string) => {
+                    try {
+                        const response = await fetch('/api/room', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'join-private', inviteToken, pin }),
+                        });
+                        const session: unknown = await response.json();
+                        if (!response.ok) {
+                            const message = isRecord(session) && typeof session.error === 'string' ? session.error : 'Could not join the private room.';
+                            throw new Error(message);
+                        }
+                        connectSession(session);
+                        store.setLocalSession({ pairingState: 'joining', pairingError: null });
+                        onlinePrivateJoin = null;
+                    } catch (error) {
+                        showError(error, 'Could not join the private room.');
+                    }
+                };
+                return;
+            }
+
+            if (createPrivate) {
+                const response = await fetch('/api/room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create-private' }),
+                });
+                const session: unknown = await response.json();
+                if (!response.ok || !isRecord(session) || typeof session.pin !== 'string' || typeof session.inviteToken !== 'string') {
+                    throw new Error('Could not create the private room.');
+                }
+                const shareUrl = `${window.location.origin}/?invite=${encodeURIComponent(session.inviteToken)}`;
+                store.setLocalSession({
+                    localRole: 'host',
+                    localRoomPrivacy: 'private',
+                    pairingCode: session.pin,
+                    shareUrl,
+                    pairingState: 'hosting',
+                    pairingError: null,
+                });
+                connectSession(session);
+                return;
+            }
+
+            const response = await fetch('/api/room', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Could not create the public room.');
+            connectSession(await response.json());
+        } catch (error) {
+            showError(error, 'Online room is unavailable.');
         }
     })();
 
     return () => {
+        onlinePrivateJoin = null;
         onlineChannelInstance?.unbind_all();
         if (pusher && roomName) pusher.unsubscribe(roomName);
         onlineChannelInstance = null;

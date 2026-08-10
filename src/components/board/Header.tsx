@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/
 import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
 
 export function Header() {
-    const { connectionState, networkMode, localRole, pairingState } = useBoardStore();
+    const { connectionState, networkMode, localRoomPrivacy, localRole, pairingState } = useBoardStore();
     const waiting = pairingState === 'hosting' || pairingState === 'needs-pin' || pairingState === 'joining' || pairingState === 'connecting';
 
     return (
@@ -35,7 +35,7 @@ export function Header() {
                         {networkMode === 'online'
                             ? <Cloud className="w-3.5 h-3.5" />
                             : localRole === 'host' ? <Laptop className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
-                        {networkMode === 'online' ? 'Online public' : localRole === 'host' ? 'Host' : 'Receiver'}
+                        {networkMode === 'online' ? `Online ${localRoomPrivacy}` : localRole === 'host' ? 'Host' : 'Receiver'}
                     </div>
                 )}
 

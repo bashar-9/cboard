@@ -143,13 +143,27 @@ webSocketServer.on('connection', (socket, request) => {
       roomPrivacy: localRoomPrivacy,
       shareUrl: `http://${getLanAddress()}:${port}`,
     });
+    for (const [candidateSocket, candidate] of clients) {
+      if (candidate.role !== 'receiver' || candidate.authenticated) continue;
+      send(candidateSocket, { type: 'room-privacy', privacy: localRoomPrivacy });
+      if (localRoomPrivacy === 'public') {
+        candidate.authenticated = true;
+        send(candidateSocket, { type: 'join-accepted' });
+      }
+    }
     connectPeers();
-  } else if (!existingHost) {
-    send(socket, { type: 'error', code: 'host_required', message: 'The Host must open CBoard first.' });
-    setTimeout(() => socket.close(1008, 'Host required'), 100);
   } else if ([...clients.values()].filter((candidate) => candidate.role === 'receiver').length > 1) {
     send(socket, { type: 'error', code: 'room_full', message: 'This board already has a Receiver.' });
     setTimeout(() => socket.close(1008, 'Room full'), 100);
+  } else if (!existingHost) {
+    send(socket, {
+      type: 'session',
+      role,
+      clientId: client.id,
+      requiresPin: localRoomPrivacy === 'private',
+      roomPrivacy: localRoomPrivacy,
+      waitingForHost: true,
+    });
   } else if (localRoomPrivacy === 'public') {
     client.authenticated = true;
     send(socket, { type: 'session', role, clientId: client.id, requiresPin: false, roomPrivacy: 'public' });

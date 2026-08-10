@@ -5,12 +5,12 @@ A browser-based text and file sharing service with an online Vercel mode and an 
 
 ## Current Active Release
 
-- **Online:** Vercel + Pusher public room, grouped by public IP
+- **Online:** Vercel + Pusher Public rooms grouped by public IP, plus PIN-locked Private invite links
 - **Local:** Host + one Receiver through a custom Node.js/Next.js server
 - **Local Pairing:** Open Public room or PIN-locked Private room
 - **Transfer:** Direct browser-to-browser WebRTC data channels
 - **Cloud features:** Supabase Private Mode is preserved but hidden and inactive
-- **Online signaling:** Pusher carries WebRTC connection setup only
+- **Online signaling:** Pusher carries WebRTC connection setup only; Private room access uses signed, expiring tokens
 
 ## Core Architecture & Tech Stack
 - **Framework:** Next.js (App Router)

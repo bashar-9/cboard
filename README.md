@@ -2,12 +2,12 @@
 
 CBoard shares text and files directly between browsers in two ways:
 
-- **Online:** open the Vercel website on devices using the same internet connection.
+- **Online:** use a public room on the same internet connection, or create a PIN-locked Private room.
 - **Local:** one laptop hosts CBoard for a second device on the same router, even without internet.
 
 ## How it works
 
-- A local room can be **Public** or protected by a six-digit **PIN**.
+- Online and local rooms can be **Public** or protected by a six-digit **PIN**.
 - Local rooms allow one Host and one Receiver.
 - Text and files move directly between the two browsers with WebRTC.
 - Items expire after 15 minutes. Files are limited to 50 MB each.

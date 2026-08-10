@@ -13,7 +13,7 @@ export function LocalConnectionPanel() {
     const [pin, setPin] = useState('');
     const [copied, setCopied] = useState(false);
 
-    if (networkMode === 'online' || pairingState === 'paired') return null;
+    if (pairingState === 'paired' && (networkMode !== 'online' || localRole === 'receiver')) return null;
 
     const copyShareUrl = async () => {
         if (!shareUrl) return;
@@ -37,17 +37,47 @@ export function LocalConnectionPanel() {
         );
     }
 
-    if (localRole === 'host' && pairingState === 'hosting') {
+    if (networkMode === 'online' && localRoomPrivacy === 'public' && (pairingState === 'joining' || pairingState === 'paired')) {
+        return (
+            <div className="max-w-xl mx-auto mb-6 rounded-3xl border border-slate-200/70 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 p-6 shadow-sm">
+                <div className="flex items-start gap-4">
+                    <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0">
+                        <Globe className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                        <h2 className="font-bold text-lg">Online Public room</h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            {pairingState === 'paired' ? 'Connected to another device.' : 'Waiting for another device using the same internet connection.'}
+                        </p>
+                    </div>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/70">
+                    <button type="button" className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold bg-white dark:bg-slate-700 shadow-sm text-emerald-700 dark:text-emerald-400">
+                        <Globe className="w-4 h-4" /> Public
+                    </button>
+                    <button type="button" onClick={() => setLocalRoomPrivacy('private')} className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-500">
+                        <Lock className="w-4 h-4" /> Private
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (localRole === 'host' && (pairingState === 'hosting' || (networkMode === 'online' && pairingState === 'paired'))) {
         return (
             <div className="max-w-xl mx-auto mb-6 rounded-3xl border border-indigo-200/70 dark:border-indigo-500/20 bg-white/90 dark:bg-slate-900/80 p-6 shadow-lg shadow-indigo-500/5">
                 <div className="flex items-start gap-4">
                     <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center shrink-0">
-                        <Laptop className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        {networkMode === 'online'
+                            ? <Lock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                            : <Laptop className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h2 className="font-bold text-lg">This device is the Host</h2>
+                        <h2 className="font-bold text-lg">{networkMode === 'online' ? 'Your Private room' : 'This device is the Host'}</h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {localRoomPrivacy === 'private'
+                            {networkMode === 'online'
+                                ? 'Send the private link and PIN to the Receiver.'
+                                : localRoomPrivacy === 'private'
                                 ? 'The Receiver opens this address and enters your PIN.'
                                 : 'Anyone on this network can open this address and connect.'}
                         </p>
@@ -71,13 +101,15 @@ export function LocalConnectionPanel() {
                             <Lock className="w-4 h-4" /> Private
                         </button>
                     </div>
-                    <div className="flex items-center gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 p-2 pl-4">
-                        <LinkIcon className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span className="text-sm font-mono truncate flex-1">{shareUrl || 'Finding local address…'}</span>
-                        <Button variant="ghost" size="icon" onClick={copyShareUrl} disabled={!shareUrl} title="Copy local address">
-                            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                    </div>
+                    {shareUrl && (
+                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 p-2 pl-4">
+                            <LinkIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span className="text-sm font-mono truncate flex-1">{shareUrl}</span>
+                            <Button variant="ghost" size="icon" onClick={copyShareUrl} title="Copy private link">
+                                {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                            </Button>
+                        </div>
+                    )}
                     {localRoomPrivacy === 'private' && (
                         <div className="flex items-center justify-between rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/60 dark:border-indigo-500/20 px-4 py-3">
                             <span className="flex items-center gap-2 text-sm font-medium text-indigo-700 dark:text-indigo-300"><KeyRound className="w-4 h-4" /> Pairing PIN</span>
@@ -86,7 +118,7 @@ export function LocalConnectionPanel() {
                     )}
                 </div>
                 <p className="text-xs text-slate-400 mt-4 text-center">
-                    Waiting for one Receiver. {localRoomPrivacy === 'private' ? 'The PIN stays on this local server only.' : 'No PIN is required.'}
+                    Waiting for one Receiver. {networkMode === 'online' ? 'The room expires after 12 hours.' : localRoomPrivacy === 'private' ? 'The PIN stays on this local server only.' : 'No PIN is required.'}
                 </p>
             </div>
         );
