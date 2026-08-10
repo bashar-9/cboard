@@ -10,6 +10,7 @@ CBoard shares text and files directly between browsers in two ways:
 - Online and local rooms can be **Public** or protected by a six-digit **PIN**.
 - Local rooms allow one Host and one Receiver.
 - Text and files move directly between the two browsers with WebRTC.
+- Refreshes and short connection drops reconnect automatically; Private room approval is remembered.
 - Items expire after 15 minutes. Files are limited to 50 MB each.
 
 The existing Supabase mode is preserved in the code but is hidden and inactive. Active modes make no Supabase calls.

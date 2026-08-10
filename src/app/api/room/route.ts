@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { createPrivateInvite, getClientIp, getRoomName, openPrivateInvite, signRoomAccess, signUserId, verifyUserId } from '@/lib/server-utils';
+import { createPrivateInvite, getClientIp, getRoomName, openPrivateInvite, readPrivateInvite, signRoomAccess, signUserId, verifyRoomAccess, verifyUserId } from '@/lib/server-utils';
 
 export const dynamic = 'force-dynamic';
 const privateJoinAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -31,15 +31,11 @@ export async function GET(request: Request) {
     try {
         const ip = getClientIp(request);
         const roomName = getRoomName(ip);
-        const cookieStore = await cookies();
-        const token = cookieStore.get('user_id_token')?.value;
-        let userId = token ? verifyUserId(token) : null;
-        const isNewUser = !userId;
-        if (!userId) userId = crypto.randomUUID().slice(0, 16);
+        const userId = crypto.randomUUID().slice(0, 16);
 
         const response = NextResponse.json({ roomName, userId });
         response.headers.set('Cache-Control', 'no-store');
-        setIdentityCookie(response, userId, isNewUser);
+        setIdentityCookie(response, userId, true);
         return response;
     } catch (error) {
         console.error('Room setup failed:', error instanceof Error ? error.message : 'Unknown error');
@@ -79,6 +75,21 @@ export async function POST(request: Request) {
             response.headers.set('Cache-Control', 'no-store');
             setIdentityCookie(response, userId, isNewUser);
             setPrivateRoomCookie(response, roomName, userId);
+            return response;
+        }
+
+        if (input.action === 'resume-private' && typeof input.inviteToken === 'string' && userId) {
+            const invite = readPrivateInvite(input.inviteToken);
+            const accessToken = cookieStore.get('room_access_token')?.value;
+            const access = accessToken ? verifyRoomAccess(accessToken) : null;
+            if (!invite || !access || access.roomName !== invite.roomName || access.userId !== userId) {
+                return NextResponse.json({ error: 'Private room access expired.' }, { status: 401 });
+            }
+            userId = crypto.randomUUID().slice(0, 16);
+            const response = NextResponse.json({ roomName: invite.roomName, userId, pin: invite.pin, inviteToken: input.inviteToken });
+            response.headers.set('Cache-Control', 'no-store');
+            setIdentityCookie(response, userId, true);
+            setPrivateRoomCookie(response, invite.roomName, userId);
             return response;
         }
 

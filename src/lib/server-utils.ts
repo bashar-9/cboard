@@ -115,8 +115,8 @@ export function createPrivateInvite(roomName: string, pin: string) {
     return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64url');
 }
 
-export function openPrivateInvite(token: string, submittedPin: string) {
-    if (!/^[A-Za-z0-9_-]{40,1000}$/.test(token) || !/^\d{6}$/.test(submittedPin)) return null;
+export function readPrivateInvite(token: string) {
+    if (!/^[A-Za-z0-9_-]{40,1000}$/.test(token)) return null;
     try {
         const secret = getSigningSecret();
         if (!secret) return null;
@@ -135,9 +135,16 @@ export function openPrivateInvite(token: string, submittedPin: string) {
             || !/^\d{6}$/.test(data.pin)
             || typeof data.expiresAt !== 'number'
             || data.expiresAt <= Date.now()) return null;
-        const matches = crypto.timingSafeEqual(Buffer.from(data.pin), Buffer.from(submittedPin));
-        return matches ? data.roomName : null;
+        return { roomName: data.roomName, pin: data.pin };
     } catch {
         return null;
     }
+}
+
+export function openPrivateInvite(token: string, submittedPin: string) {
+    if (!/^\d{6}$/.test(submittedPin)) return null;
+    const invite = readPrivateInvite(token);
+    if (!invite) return null;
+    const matches = crypto.timingSafeEqual(Buffer.from(invite.pin), Buffer.from(submittedPin));
+    return matches ? invite.roomName : null;
 }

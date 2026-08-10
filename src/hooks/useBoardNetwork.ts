@@ -11,6 +11,8 @@ const MAX_FILES = 10;
 const MAX_ITEMS_PER_SYNC = 100;
 const CHUNK_SIZE = 64_000;
 const ID_LENGTH = 36;
+const ONLINE_PRIVATE_HOST_KEY = 'cboard-online-private-host';
+const LOCAL_BROWSER_SESSION_KEY = 'cboard-local-browser-session';
 
 let webSocketInstance: WebSocket | null = null;
 let webrtcInstance: WebRTCManager | null = null;
@@ -149,6 +151,7 @@ export function setLocalRoomPrivacy(privacy: 'public' | 'private') {
     const store = useBoardStore.getState();
     store.setLocalSession({ localRoomPrivacy: privacy, pairingError: null });
     if (store.networkMode === 'online') {
+        if (privacy === 'public') localStorage.removeItem(ONLINE_PRIVATE_HOST_KEY);
         window.location.assign(privacy === 'private' ? '/?create=private' : '/');
         return;
     }
@@ -357,7 +360,12 @@ function startLocalConnection(isActive: () => boolean) {
     });
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    let browserSessionId = localStorage.getItem(LOCAL_BROWSER_SESSION_KEY);
+    if (!browserSessionId || !/^[a-f0-9-]{32,36}$/.test(browserSessionId)) {
+        browserSessionId = generateId();
+        localStorage.setItem(LOCAL_BROWSER_SESSION_KEY, browserSessionId);
+    }
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?session=${encodeURIComponent(browserSessionId)}`);
     webSocketInstance = socket;
 
     socket.onmessage = (event) => {
@@ -565,9 +573,24 @@ function startOnlineConnection(isActive: () => boolean) {
         });
     };
 
+    const resumePrivateSession = async (token: string) => {
+        const response = await fetch('/api/room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'resume-private', inviteToken: token }),
+        });
+        return response.ok ? await response.json() as unknown : null;
+    };
+
     void (async () => {
         try {
             if (inviteToken) {
+                const resumedSession = await resumePrivateSession(inviteToken);
+                if (resumedSession) {
+                    connectSession(resumedSession);
+                    store.setLocalSession({ pairingState: 'joining', pairingError: null });
+                    return;
+                }
                 onlinePrivateJoin = async (pin: string) => {
                     try {
                         const response = await fetch('/api/room', {
@@ -591,6 +614,24 @@ function startOnlineConnection(isActive: () => boolean) {
             }
 
             if (createPrivate) {
+                const savedInvite = localStorage.getItem(ONLINE_PRIVATE_HOST_KEY);
+                if (savedInvite) {
+                    const resumedSession = await resumePrivateSession(savedInvite);
+                    if (isRecord(resumedSession) && typeof resumedSession.pin === 'string') {
+                        const shareUrl = `${window.location.origin}/?invite=${encodeURIComponent(savedInvite)}`;
+                        store.setLocalSession({
+                            localRole: 'host',
+                            localRoomPrivacy: 'private',
+                            pairingCode: resumedSession.pin,
+                            shareUrl,
+                            pairingState: 'hosting',
+                            pairingError: null,
+                        });
+                        connectSession(resumedSession);
+                        return;
+                    }
+                    localStorage.removeItem(ONLINE_PRIVATE_HOST_KEY);
+                }
                 const response = await fetch('/api/room', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -600,6 +641,7 @@ function startOnlineConnection(isActive: () => boolean) {
                 if (!response.ok || !isRecord(session) || typeof session.pin !== 'string' || typeof session.inviteToken !== 'string') {
                     throw new Error('Could not create the private room.');
                 }
+                localStorage.setItem(ONLINE_PRIVATE_HOST_KEY, session.inviteToken);
                 const shareUrl = `${window.location.origin}/?invite=${encodeURIComponent(session.inviteToken)}`;
                 store.setLocalSession({
                     localRole: 'host',

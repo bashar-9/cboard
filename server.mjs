@@ -17,6 +17,7 @@ const pairingPin = randomInt(100000, 1000000).toString();
 let localRoomPrivacy = 'public';
 const clients = new Map();
 const pinAttemptsByAddress = new Map();
+const approvedReceiverSessions = new Map();
 
 function getLanAddress() {
   const addresses = Object.values(networkInterfaces()).flat().filter(Boolean);
@@ -43,6 +44,16 @@ function safeEqual(left, right) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function getBrowserSessionId(request) {
+  try {
+    const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+    const sessionId = requestUrl.searchParams.get('session') || '';
+    return /^[a-f0-9-]{32,36}$/.test(sessionId) ? sessionId : null;
+  } catch {
+    return null;
+  }
 }
 
 function send(socket, payload) {
@@ -106,13 +117,16 @@ server.on('upgrade', (request, socket, head) => {
         return;
     }
     const origin = request.headers.origin;
-  const expectedOrigin = `http://${request.headers.host}`;
+    const expectedOrigin = `http://${request.headers.host}`;
+    const browserSessionId = getBrowserSessionId(request);
+    const replacingExistingSession = browserSessionId
+      && [...clients.values()].some((client) => client.browserSessionId === browserSessionId);
 
-    if (!origin || origin !== expectedOrigin || clients.size >= 3) {
-    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-    socket.destroy();
-    return;
-  }
+    if (!origin || origin !== expectedOrigin || (clients.size >= 3 && !replacingExistingSession)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
   webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
     webSocketServer.emit('connection', webSocket, request);
@@ -120,15 +134,29 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 webSocketServer.on('connection', (socket, request) => {
+  const browserSessionId = getBrowserSessionId(request) || randomUUID();
+  let replacedRole = null;
+  let replacedAuthenticated = false;
+  for (const [existingSocket, existingClient] of clients) {
+    if (existingClient.browserSessionId !== browserSessionId) continue;
+    replacedRole = existingClient.role;
+    replacedAuthenticated = existingClient.authenticated;
+    existingClient.replaced = true;
+    clients.delete(existingSocket);
+    existingSocket.close(4000, 'Page refreshed');
+  }
   const localRequest = isHostAddress(request.socket.remoteAddress);
   const existingHost = getClientByRole('host');
-  const role = localRequest && !existingHost ? 'host' : 'receiver';
+  const role = replacedRole || (localRequest && !existingHost ? 'host' : 'receiver');
+  const approvedUntil = approvedReceiverSessions.get(browserSessionId) || 0;
   const client = {
     id: randomUUID().replaceAll('-', '').slice(0, 16),
     role,
-    authenticated: role === 'host',
+    authenticated: replacedAuthenticated || role === 'host' || (role === 'receiver' && approvedUntil > Date.now()),
     attempts: 0,
     alive: true,
+    browserSessionId,
+    replaced: false,
   };
 
     clients.set(socket, client);
@@ -160,10 +188,13 @@ webSocketServer.on('connection', (socket, request) => {
       type: 'session',
       role,
       clientId: client.id,
-      requiresPin: localRoomPrivacy === 'private',
+      requiresPin: localRoomPrivacy === 'private' && !client.authenticated,
       roomPrivacy: localRoomPrivacy,
       waitingForHost: true,
     });
+  } else if (client.authenticated) {
+    send(socket, { type: 'session', role, clientId: client.id, requiresPin: false, roomPrivacy: localRoomPrivacy });
+    connectPeers();
   } else if (localRoomPrivacy === 'public') {
     client.authenticated = true;
     send(socket, { type: 'session', role, clientId: client.id, requiresPin: false, roomPrivacy: 'public' });
@@ -244,6 +275,7 @@ webSocketServer.on('connection', (socket, request) => {
       }
 
       client.authenticated = true;
+      approvedReceiverSessions.set(browserSessionId, Date.now() + 12 * 60 * 60 * 1000);
       pinAttemptsByAddress.delete(address);
       send(socket, { type: 'join-accepted' });
       connectPeers();
@@ -268,6 +300,7 @@ webSocketServer.on('connection', (socket, request) => {
   });
 
   socket.on('close', () => {
+    if (client.replaced) return;
     const wasAuthenticated = client.authenticated;
     clients.delete(socket);
     if (wasAuthenticated) {
@@ -278,6 +311,10 @@ webSocketServer.on('connection', (socket, request) => {
 });
 
 const heartbeat = setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, expiresAt] of approvedReceiverSessions) {
+    if (expiresAt <= now) approvedReceiverSessions.delete(sessionId);
+  }
   for (const [socket, client] of clients) {
     if (!client.alive) {
       socket.terminate();
