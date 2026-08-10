@@ -2,7 +2,7 @@
 
 CBoard shares text and files directly between browsers in two ways:
 
-- **Online:** use a public room on the same internet connection, or create a PIN-locked Private room.
+- **Online:** share the exact Public room link, or create a PIN-locked Private room.
 - **Local:** one laptop hosts CBoard for a second device on the same router, even without internet.
 
 ## How it works

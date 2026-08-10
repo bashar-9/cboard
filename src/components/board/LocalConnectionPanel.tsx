@@ -20,7 +20,7 @@ export function LocalConnectionPanel() {
         try {
             await navigator.clipboard.writeText(shareUrl);
             setCopied(true);
-            toast.success('Local address copied.');
+            toast.success('Room link copied.');
             window.setTimeout(() => setCopied(false), 1500);
         } catch {
             toast.error('Copy is blocked. Select the address manually.');
@@ -59,6 +59,18 @@ export function LocalConnectionPanel() {
                         <Lock className="w-4 h-4" /> Private
                     </button>
                 </div>
+                {shareUrl && (
+                    <div className="mt-3">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Open this exact link on the other device:</p>
+                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 p-2 pl-4">
+                            <LinkIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span className="text-sm font-mono truncate flex-1">{shareUrl}</span>
+                            <Button variant="ghost" size="icon" onClick={copyShareUrl} title="Copy Public room link">
+                                {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -161,6 +173,11 @@ export function LocalConnectionPanel() {
             <ShieldCheck className="w-6 h-6 mx-auto mb-3 text-red-500" />
             <h2 className="font-semibold">Connection unavailable</h2>
             <p className="text-sm text-red-600/80 dark:text-red-300 mt-1">{pairingError || 'Refresh the page to try again.'}</p>
+            {networkMode === 'online' && (
+                <Button type="button" variant="outline" onClick={() => setLocalRoomPrivacy('public')} className="mt-4 rounded-xl">
+                    <Globe className="w-4 h-4 mr-2" /> Back to Public
+                </Button>
+            )}
         </div>
     );
 }

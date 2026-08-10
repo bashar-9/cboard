@@ -39,7 +39,7 @@ function getSigningSecret() {
     return process.env.PUSHER_COOKIE_SECRET || process.env.PUSHER_SECRET || null;
 }
 
-const PRIVATE_ROOM_PATTERN = /^presence-private-[a-f0-9]{32}$/;
+const ACCESS_ROOM_PATTERN = /^presence-(?:private-[a-f0-9]{32}|room-[a-f0-9]{12})$/;
 
 function hmac(value: string) {
     const secret = getSigningSecret();
@@ -80,7 +80,7 @@ export function verifyUserId(token: string): string | null {
 }
 
 export function signRoomAccess(roomName: string, userId: string) {
-    if (!PRIVATE_ROOM_PATTERN.test(roomName)) throw new Error('Invalid private room.');
+    if (!ACCESS_ROOM_PATTERN.test(roomName)) throw new Error('Invalid room.');
     const payload = Buffer.from(JSON.stringify({ roomName, userId, expiresAt: Date.now() + 12 * 60 * 60 * 1000 })).toString('base64url');
     return `${payload}.${hmac(payload)}`;
 }
@@ -93,7 +93,7 @@ export function verifyRoomAccess(token: string) {
         if (!value || typeof value !== 'object') return null;
         const data = value as Record<string, unknown>;
         if (typeof data.roomName !== 'string'
-            || !PRIVATE_ROOM_PATTERN.test(data.roomName)
+            || !ACCESS_ROOM_PATTERN.test(data.roomName)
             || typeof data.userId !== 'string'
             || typeof data.expiresAt !== 'number'
             || data.expiresAt <= Date.now()) return null;
@@ -104,7 +104,7 @@ export function verifyRoomAccess(token: string) {
 }
 
 export function createPrivateInvite(roomName: string, pin: string) {
-    if (!PRIVATE_ROOM_PATTERN.test(roomName) || !/^\d{6}$/.test(pin)) throw new Error('Invalid private room details.');
+    if (!ACCESS_ROOM_PATTERN.test(roomName) || !/^\d{6}$/.test(pin)) throw new Error('Invalid room details.');
     const secret = getSigningSecret();
     if (!secret) throw new Error('Pusher cookie signing secret is not configured.');
     const key = crypto.createHash('sha256').update(`${secret}:private-invite`).digest();
@@ -130,7 +130,7 @@ export function readPrivateInvite(token: string) {
         if (!value || typeof value !== 'object') return null;
         const data = value as Record<string, unknown>;
         if (typeof data.roomName !== 'string'
-            || !PRIVATE_ROOM_PATTERN.test(data.roomName)
+            || !ACCESS_ROOM_PATTERN.test(data.roomName)
             || typeof data.pin !== 'string'
             || !/^\d{6}$/.test(data.pin)
             || typeof data.expiresAt !== 'number'

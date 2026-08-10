@@ -32,8 +32,9 @@ export async function GET(request: Request) {
         const ip = getClientIp(request);
         const roomName = getRoomName(ip);
         const userId = crypto.randomUUID().slice(0, 16);
+        const inviteToken = createPrivateInvite(roomName, '000000');
 
-        const response = NextResponse.json({ roomName, userId });
+        const response = NextResponse.json({ roomName, userId, inviteToken });
         response.headers.set('Cache-Control', 'no-store');
         setIdentityCookie(response, userId, true);
         return response;
@@ -87,6 +88,19 @@ export async function POST(request: Request) {
             }
             userId = crypto.randomUUID().slice(0, 16);
             const response = NextResponse.json({ roomName: invite.roomName, userId, pin: invite.pin, inviteToken: input.inviteToken });
+            response.headers.set('Cache-Control', 'no-store');
+            setIdentityCookie(response, userId, true);
+            setPrivateRoomCookie(response, invite.roomName, userId);
+            return response;
+        }
+
+        if (input.action === 'join-public' && typeof input.inviteToken === 'string') {
+            const invite = readPrivateInvite(input.inviteToken);
+            if (!invite || !/^presence-room-[a-f0-9]{12}$/.test(invite.roomName)) {
+                return NextResponse.json({ error: 'Public room link expired.' }, { status: 401 });
+            }
+            userId = crypto.randomUUID().slice(0, 16);
+            const response = NextResponse.json({ roomName: invite.roomName, userId, inviteToken: input.inviteToken });
             response.headers.set('Cache-Control', 'no-store');
             setIdentityCookie(response, userId, true);
             setPrivateRoomCookie(response, invite.roomName, userId);

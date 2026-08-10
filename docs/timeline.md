@@ -12,6 +12,7 @@
 
 | Date | Milestone | Details |
 |------|-----------|---------|
+| 2026-08-10 | Exact Public Links | Added a Public room link so IPv4/IPv6 differences cannot leave devices waiting in separate rooms. |
 | 2026-08-10 | Reconnect Safety | Preserved room identity and PIN approval across refreshes and short connection drops. |
 | 2026-08-10 | Online Private Rooms | Added expiring private invite links, six-digit PIN checks, attempt limits, and phone-first waiting without Supabase. |
 | 2026-08-10 | Hybrid Architecture | Kept Vercel/Pusher public rooms and added a local Host + one Receiver WebSocket path for offline routers. |
