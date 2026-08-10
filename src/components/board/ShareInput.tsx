@@ -2,22 +2,23 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
-import { sendPrivateItem } from '@/hooks/usePrivateNetwork';
 import { useBoardStore } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip, Trash2, File as FileIcon, X } from 'lucide-react';
+import { Send, Paperclip, File as FileIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const MAX_FILE_SIZE_PUBLIC = 50 * 1024 * 1024; // 50MB
-const MAX_FILE_SIZE_PRIVATE = 4 * 1024 * 1024; // 4MB
+const MAX_FILES = 10;
+const MAX_TEXT_LENGTH = 10_000;
 
 export function ShareInput() {
     const { sharePost } = useBoardNetwork();
-    const { connectionState, isPrivateMode, user } = useBoardStore();
+    const { connectionState } = useBoardStore();
     const [inputText, setInputText] = useState('');
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [isSharing, setIsSharing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -33,19 +34,23 @@ export function ShareInput() {
         autoResize();
     }, [inputText, autoResize]);
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
-        const maxLimit = isPrivateMode ? MAX_FILE_SIZE_PRIVATE : MAX_FILE_SIZE_PUBLIC;
-        const validFiles = files.filter(file => {
-            if (file.size > maxLimit) {
-                toast.error(`File ${file.name} is too large. Max size is ${isPrivateMode ? '4MB' : '50MB'}.`);
+    const addFiles = (files: File[]) => {
+        const availableSlots = Math.max(0, MAX_FILES - selectedFiles.length);
+        const validFiles = files.slice(0, availableSlots).filter(file => {
+            if (file.size > MAX_FILE_SIZE_PUBLIC) {
+                toast.error(`File ${file.name} is too large. Maximum size is 50 MB.`);
                 return false;
             }
             return true;
         });
+        if (files.length > availableSlots) toast.error(`You can share up to ${MAX_FILES} files at once.`);
         if (validFiles.length > 0) {
             setSelectedFiles(prev => [...prev, ...validFiles]);
         }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        addFiles(Array.from(e.target.files || []));
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -62,38 +67,23 @@ export function ShareInput() {
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-        const files = Array.from(e.dataTransfer.files || []);
-        const maxLimit = isPrivateMode ? MAX_FILE_SIZE_PRIVATE : MAX_FILE_SIZE_PUBLIC;
-        const validFiles = files.filter(file => {
-            if (file.size > maxLimit) {
-                toast.error(`File ${file.name} is too large. Max size is ${isPrivateMode ? '4MB' : '50MB'}.`);
-                return false;
-            }
-            return true;
-        });
-        if (validFiles.length > 0) {
-            setSelectedFiles(prev => [...prev, ...validFiles]);
-        }
+        addFiles(Array.from(e.dataTransfer.files || []));
     };
 
-    const handleShare = () => {
+    const handleShare = async () => {
         if (!inputText.trim() && selectedFiles.length === 0) return;
-
-        if (isPrivateMode) {
-            if (!user) {
-                toast.error("You must be logged in to use Private Mode.");
-                return;
+        setIsSharing(true);
+        try {
+            const shared = await sharePost(inputText, selectedFiles);
+            if (shared) {
+                setInputText('');
+                setSelectedFiles([]);
+                if (textareaRef.current) textareaRef.current.style.height = 'auto';
             }
-            sendPrivateItem(inputText, selectedFiles);
-        } else {
-            sharePost(inputText, selectedFiles);
-        }
-
-        setInputText('');
-        setSelectedFiles([]);
-        // Reset textarea height
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
+        } catch {
+            toast.error('Sharing failed. Check the local connection and try again.');
+        } finally {
+            setIsSharing(false);
         }
     };
 
@@ -168,21 +158,22 @@ export function ShareInput() {
                         ref={textareaRef}
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
+                        maxLength={MAX_TEXT_LENGTH}
                         placeholder="Share something with the board..."
                         rows={1}
                         className="flex-1 resize-none border-0 bg-transparent py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none leading-relaxed min-h-[44px] max-h-[120px]"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
-                                handleShare();
+                                void handleShare();
                             }
                         }}
                     />
 
                     {/* Send */}
                     <Button
-                        onClick={handleShare}
-                        disabled={(!inputText.trim() && selectedFiles.length === 0) || connectionState !== 'connected'}
+                        onClick={() => void handleShare()}
+                        disabled={(!inputText.trim() && selectedFiles.length === 0) || connectionState !== 'connected' || isSharing}
                         className="h-10 w-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:shadow-none shrink-0 mr-1 mb-1 p-0"
                         title="Share (⌘ + Enter)"
                     >

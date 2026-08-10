@@ -1,36 +1,67 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Wifi, Send, MonitorSmartphone, ShieldCheck, Clock, Zap } from 'lucide-react';
+import { Wifi, MonitorSmartphone, Globe, KeyRound, Clock, Zap } from 'lucide-react';
+import { useBoardStore } from '@/store/useBoardStore';
 
-const steps = [
+const localSteps = [
     {
         icon: Wifi,
-        title: 'Connect to the same network',
-        description: 'Open this page on any device connected to your Wi-Fi. Devices are auto-discovered.',
+        title: 'Open the local address',
+        description: 'Connect one Receiver to the same Wi-Fi and open the address shown on the Host.',
         accent: 'from-blue-500 to-cyan-400',
         accentBg: 'bg-blue-500/10 dark:bg-blue-500/20',
     },
     {
-        icon: Send,
-        title: 'Share text or files',
-        description: 'Type a message or drop files into the input bar. Everything is sent instantly.',
+        icon: KeyRound,
+        title: 'Choose Public or Private',
+        description: 'Public opens automatically. Private asks the Receiver for the Host PIN.',
         accent: 'from-violet-500 to-purple-400',
         accentBg: 'bg-violet-500/10 dark:bg-violet-500/20',
     },
     {
         icon: MonitorSmartphone,
-        title: 'Receive on any device',
-        description: 'Shared items appear on every connected device in real-time. No accounts needed.',
+        title: 'Share both ways',
+        description: 'Send text or files between the Host and Receiver. No account or internet needed.',
         accent: 'from-emerald-500 to-teal-400',
         accentBg: 'bg-emerald-500/10 dark:bg-emerald-500/20',
     },
 ];
 
-const features = [
-    { icon: ShieldCheck, label: 'Peer-to-peer', sublabel: 'No servers touch your data' },
+const onlineSteps = [
+    {
+        icon: Wifi,
+        title: 'Use the same network',
+        description: 'Open the Vercel website on devices using the same Wi-Fi or router.',
+        accent: 'from-blue-500 to-cyan-400',
+        accentBg: 'bg-blue-500/10 dark:bg-blue-500/20',
+    },
+    {
+        icon: Globe,
+        title: 'Join the public board',
+        description: 'Devices on that network are discovered automatically. No account or PIN is needed.',
+        accent: 'from-violet-500 to-purple-400',
+        accentBg: 'bg-violet-500/10 dark:bg-violet-500/20',
+    },
+    {
+        icon: MonitorSmartphone,
+        title: 'Share peer-to-peer',
+        description: 'Text and files move directly between browsers; Pusher only helps them connect.',
+        accent: 'from-emerald-500 to-teal-400',
+        accentBg: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+    },
+];
+
+const localFeatures = [
+    { icon: KeyRound, label: 'Public or private', sublabel: 'Optional PIN protection' },
     { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
-    { icon: Zap, label: 'Instant', sublabel: 'Zero setup required' },
+    { icon: Zap, label: 'Local only', sublabel: 'Works without internet' },
+];
+
+const onlineFeatures = [
+    { icon: Globe, label: 'Public room', sublabel: 'Same internet connection' },
+    { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
+    { icon: Zap, label: 'Peer-to-peer', sublabel: 'Content avoids the cloud' },
 ];
 
 const containerVariants = {
@@ -47,6 +78,11 @@ const itemVariants = {
 };
 
 export function PublicHowItWorks({ className }: { className?: string }) {
+    const networkMode = useBoardStore((state) => state.networkMode);
+    const online = networkMode === 'online';
+    const steps = online ? onlineSteps : localSteps;
+    const features = online ? onlineFeatures : localFeatures;
+
     return (
         <motion.div
             variants={containerVariants}
@@ -64,7 +100,9 @@ export function PublicHowItWorks({ className }: { className?: string }) {
                     How It Works
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base mt-3 max-w-md mx-auto leading-relaxed">
-                    Share text and files between devices on your local network — privately, instantly, with zero setup.
+                    {online
+                        ? 'Open CBoard on the same network. Shared content stays peer-to-peer.'
+                        : 'Host a public or PIN-locked board on your local network, even without internet.'}
                 </p>
             </motion.div>
 

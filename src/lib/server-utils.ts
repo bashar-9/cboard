@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
  * In development, it returns a fixed string to keep all local devices in the same room.
  */
 export function getClientIp(req: Request | NextRequest) {
+    const xVercelForwardedFor = req.headers.get('x-vercel-forwarded-for');
     const xForwardedFor = req.headers.get('x-forwarded-for');
     const xRealIp = req.headers.get('x-real-ip');
 
@@ -14,6 +15,9 @@ export function getClientIp(req: Request | NextRequest) {
         return 'local-dev-network';
     }
 
+    if (xVercelForwardedFor) {
+        return xVercelForwardedFor.split(',')[0].trim();
+    }
     if (xForwardedFor) {
         return xForwardedFor.split(',')[0].trim();
     }
@@ -31,14 +35,18 @@ export function getRoomName(ip: string) {
     return `presence-room-${hash}`;
 }
 
-const SECRET = process.env.PUSHER_SECRET || 'fallback-secret-for-dev';
+function getSigningSecret() {
+    return process.env.PUSHER_COOKIE_SECRET || process.env.PUSHER_SECRET || null;
+}
 
 /**
  * Signs a user ID with a HMAC signature for secure session management.
  * Returns a token in the format "userId.signature"
  */
 export function signUserId(userId: string) {
-    const signature = crypto.createHmac('sha256', SECRET).update(userId).digest('hex');
+    const secret = getSigningSecret();
+    if (!secret) throw new Error('Pusher cookie signing secret is not configured.');
+    const signature = crypto.createHmac('sha256', secret).update(userId).digest('hex');
     return `${userId}.${signature}`;
 }
 
@@ -52,7 +60,9 @@ export function verifyUserId(token: string): string | null {
     if (parts.length !== 2) return null;
 
     const [userId, signature] = parts;
-    const expectedSignature = crypto.createHmac('sha256', SECRET).update(userId).digest('hex');
+    const secret = getSigningSecret();
+    if (!secret || !/^[a-f0-9]{64}$/.test(signature)) return null;
+    const expectedSignature = crypto.createHmac('sha256', secret).update(userId).digest('hex');
 
-    return signature === expectedSignature ? userId : null;
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature)) ? userId : null;
 }

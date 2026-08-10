@@ -4,7 +4,7 @@
 
 ---
 
-## Current Stage: 🟢 Execution
+## Current Stage: Hybrid Online + Local Testing
 
 ---
 
@@ -12,6 +12,11 @@
 
 | Date | Milestone | Details |
 |------|-----------|---------|
+| 2026-08-10 | Hybrid Architecture | Kept Vercel/Pusher public rooms and added a local Host + one Receiver WebSocket path for offline routers. |
+| 2026-08-10 | Secure Pairing | Added local Public and PIN-locked Private rooms, attempt lockout, origin checks, signaling limits, and third-device rejection. |
+| 2026-08-10 | Public Mode Focus | Hid and disabled Supabase Private Mode without deleting its implementation. |
+| 2026-08-10 | Transfer Hardening | Added message/file validation, 50 MB limits, incomplete-file rejection, and WebRTC buffer control. |
+| 2026-08-10 | Quality Baseline | Lint, TypeScript, tests, production build, Host/Receiver simulation, and dependency audit pass. |
 | 2026-02-20 | Architecture Finalized | Chose WebRTC (P2P) + Pusher signaling + Next.js App Router + Tailwind/Shadcn. See `documentation.md`. |
 | 2026-02-20 | Project Docs Created | `documentation.md` (architecture, UX rules, maintenance protocol) and `timeline.md` (this file). |
 | 2026-02-20 | Phase 1 — Foundation | Next.js initialized with Tailwind, Shadcn/ui configured, and `next-pwa` installed. |
@@ -46,14 +51,14 @@
 
 | Feature | Status | Notes |
 |------|--------|-------|
-| Stabilization | 🟢 Active | Monitoring for any edge cases in Private Sync Mode transitions. |
+| Real-device acceptance test | Active | Test one Host laptop and one phone/laptop on a router with internet disconnected. |
 
 ## Future Versions
 
 | Version | Features |
 |---------|----------|
-| v3 | Device-to-device direct send (AirDrop-style targeting over LAN) |
-| v4 | Native apps (Android, Windows, Linux) via React Native / Electron or Tauri |
+| Later | Revisit the preserved cloud Private Mode after local Public Mode is stable. |
+| Later | Optional multi-receiver rooms if the two-device model proves reliable. |
 
 ---
 

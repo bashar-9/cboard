@@ -1,47 +1,61 @@
-import { pusherServer } from '@/lib/pusher';
-import { NextRequest, NextResponse } from 'next/server';
-import { getClientIp, getRoomName, verifyUserId } from '@/lib/server-utils';
 import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import { getPusherServer } from '@/lib/pusher';
+import { getClientIp, getRoomName, verifyUserId } from '@/lib/server-utils';
 
-export async function POST(req: NextRequest) {
-    const data = await req.formData();
-    const socketId = data.get('socket_id') as string;
-    const channelName = data.get('channel_name') as string;
-
-    // Security: Verify required parameters
-    if (!socketId || !channelName) {
-        return new NextResponse('Missing socket_id or channel_name', { status: 400 });
+export async function POST(request: NextRequest) {
+    const origin = request.headers.get('origin');
+    const host = request.headers.get('host');
+    let originHost: string | null = null;
+    try {
+        originHost = origin ? new URL(origin).host : null;
+    } catch {
+        originHost = null;
+    }
+    if (!originHost || !host || originHost !== host) {
+        return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
     }
 
-    // Security: Verify that the user is joining their assigned room (based on IP)
-    const ip = getClientIp(req);
-    const expectedRoomName = getRoomName(ip);
-    if (channelName !== expectedRoomName) {
-        return new NextResponse('Unauthorized: Cannot join this room', { status: 403 });
+    const contentLength = Number(request.headers.get('content-length') || '0');
+    if (contentLength > 10_000) {
+        return NextResponse.json({ error: 'Request too large.' }, { status: 413 });
     }
 
-    // Security: Verify user identity from signed session cookie
+    let form: FormData;
+    try {
+        form = await request.formData();
+    } catch {
+        return NextResponse.json({ error: 'Invalid authorization request.' }, { status: 400 });
+    }
+    const socketId = form.get('socket_id');
+    const channelName = form.get('channel_name');
+    if (typeof socketId !== 'string'
+        || !/^\d+\.\d+$/.test(socketId)
+        || typeof channelName !== 'string'
+        || channelName.length > 128) {
+        return NextResponse.json({ error: 'Invalid authorization request.' }, { status: 400 });
+    }
+
+    const expectedRoom = getRoomName(getClientIp(request));
+    if (channelName !== expectedRoom) {
+        return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
+    }
+
     const cookieStore = await cookies();
     const token = cookieStore.get('user_id_token')?.value;
     const userId = token ? verifyUserId(token) : null;
-
     if (!userId) {
-        return new NextResponse('Unauthorized: Invalid or missing session', { status: 401 });
+        return NextResponse.json({ error: 'Start a board session first.' }, { status: 401 });
     }
 
-    const presenceData = {
-        user_id: userId,
-        user_info: {
-            joinedAt: Date.now(),
-            userAgent: req.headers.get('user-agent') || 'Unknown Device',
-        }
-    };
-
     try {
-        const authResponse = pusherServer.authorizeChannel(socketId, channelName, presenceData);
-        return NextResponse.json(authResponse);
+        const auth = getPusherServer().authorizeChannel(socketId, channelName, {
+            user_id: userId,
+            user_info: { joinedAt: Date.now() },
+        });
+        return NextResponse.json(auth);
     } catch (error) {
-        console.error('Pusher auth error:', error);
-        return new NextResponse('Internal Server Error', { status: 500 });
+        console.error('Pusher authorization failed:', error instanceof Error ? error.message : 'Unknown error');
+        return NextResponse.json({ error: 'Online sharing is unavailable.' }, { status: 503 });
     }
 }

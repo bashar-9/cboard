@@ -46,7 +46,7 @@ export function usePrivateNetworkInit() {
 
             if (data && data.length > 0) {
                 const parsedItems: SharedItem[] = data.map(row => {
-                    let attachments = [];
+                    const attachments = [];
                     if (row.file_url) {
                         attachments.push({
                             id: row.id + '-att',
@@ -87,7 +87,7 @@ export function usePrivateNetworkInit() {
                 },
                 (payload) => {
                     const row = payload.new;
-                    let attachments = [];
+                    const attachments = [];
                     if (row.file_url) {
                         attachments.push({
                             id: row.id + '-att',
@@ -156,7 +156,7 @@ export const sendPrivateItem = async (content: string, files?: File[]) => {
         const fileExt = file.name.split('.').pop();
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
             .from('private_files')
             .upload(filePath, file);
 
@@ -193,7 +193,7 @@ export const sendPrivateItem = async (content: string, files?: File[]) => {
     }
 
     if (insertedData) {
-        let attachments = [];
+        const attachments = [];
         if (insertedData.file_url) {
             attachments.push({
                 id: insertedData.id + '-att',

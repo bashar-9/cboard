@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBoardStore } from '@/store/useBoardStore';
+import { useRouter } from 'next/navigation';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const router = useRouter();
     const setUser = useBoardStore(state => state.setUser);
     const setIsPrivateMode = useBoardStore(state => state.setIsPrivateMode);
     const setConnectionState = useBoardStore(state => state.setConnectionState);
-    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        setMounted(true);
         const supabase = createClient();
 
         // Check active session on mount
@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setUser(null);
                     setIsPrivateMode(false);
                     // Force refresh to clear state and disconnect private network
-                    window.location.href = '/';
+                    router.replace('/');
                 }
             }
         );
@@ -40,9 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => {
             subscription.unsubscribe();
         };
-    }, [setUser, setIsPrivateMode, setConnectionState]);
-
-    if (!mounted) return null;
+    }, [router, setUser, setIsPrivateMode, setConnectionState]);
 
     return <>{children}</>;
 }

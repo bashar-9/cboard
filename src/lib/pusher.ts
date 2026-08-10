@@ -1,30 +1,34 @@
 import PusherServer from 'pusher';
 import PusherClient from 'pusher-js';
 
-// Server-side Pusher instance
-export const pusherServer = new PusherServer({
-    appId: process.env.PUSHER_APP_ID!,
-    key: process.env.NEXT_PUBLIC_PUSHER_APP_KEY!,
-    secret: process.env.PUSHER_SECRET!,
-    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-    useTLS: true,
-});
+let pusherServerInstance: PusherServer | null = null;
+
+export const getPusherServer = () => {
+    if (pusherServerInstance) return pusherServerInstance;
+    const appId = process.env.PUSHER_APP_ID;
+    const key = process.env.NEXT_PUBLIC_PUSHER_APP_KEY;
+    const secret = process.env.PUSHER_SECRET;
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    if (!appId || !key || !secret || !cluster) throw new Error('Pusher is not configured.');
+
+    pusherServerInstance = new PusherServer({ appId, key, secret, cluster, useTLS: true });
+    return pusherServerInstance;
+};
 
 // Client-side Pusher instance singleton
 let pusherClientInstance: PusherClient | null = null;
 
-export const getPusherClient = (userId: string): PusherClient => {
+export const getPusherClient = (): PusherClient => {
     if (!pusherClientInstance) {
+        const key = process.env.NEXT_PUBLIC_PUSHER_APP_KEY;
+        const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+        if (!key || !cluster) throw new Error('Online sharing is not configured.');
         pusherClientInstance = new PusherClient(
-            process.env.NEXT_PUBLIC_PUSHER_APP_KEY!,
+            key,
             {
-                cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-                authEndpoint: '/api/pusher/auth',
-                auth: {
-                    params: {
-                        user_id: userId,
-                    }
-                }
+                cluster,
+                forceTLS: true,
+                channelAuthorization: { endpoint: '/api/pusher/auth', transport: 'ajax' },
             }
         );
     }

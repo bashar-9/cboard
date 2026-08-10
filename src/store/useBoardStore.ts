@@ -3,6 +3,10 @@ import { persist } from 'zustand/middleware';
 import { type User } from '@supabase/supabase-js';
 
 export type SharedItemType = 'text' | 'file' | 'post';
+export type LocalRole = 'host' | 'receiver';
+export type NetworkMode = 'local' | 'online';
+export type LocalRoomPrivacy = 'public' | 'private';
+export type PairingState = 'connecting' | 'hosting' | 'needs-pin' | 'joining' | 'paired' | 'room-full' | 'error';
 
 export interface SharedAttachment {
     id: string;
@@ -46,6 +50,13 @@ interface BoardState {
     connectionState: 'disconnected' | 'connecting' | 'connected';
     roomCode: string | null;
     peers: string[]; // List of connected peer IDs
+    networkMode: NetworkMode | null;
+    localRoomPrivacy: LocalRoomPrivacy;
+    localRole: LocalRole | null;
+    pairingCode: string | null;
+    shareUrl: string | null;
+    pairingState: PairingState;
+    pairingError: string | null;
 
     // Board Data
     items: SharedItem[];
@@ -61,6 +72,7 @@ interface BoardState {
     setMyId: (id: string) => void;
     setConnectionState: (state: 'disconnected' | 'connecting' | 'connected') => void;
     setRoomCode: (code: string) => void;
+    setLocalSession: (session: Partial<Pick<BoardState, 'networkMode' | 'localRoomPrivacy' | 'localRole' | 'pairingCode' | 'shareUrl' | 'pairingState' | 'pairingError'>>) => void;
 
     addPeer: (peerId: string) => void;
     removePeer: (peerId: string) => void;
@@ -95,6 +107,13 @@ export const useBoardStore = create<BoardState>()(
             connectionState: 'disconnected',
             roomCode: null,
             peers: [],
+            networkMode: null,
+            localRoomPrivacy: 'public',
+            localRole: null,
+            pairingCode: null,
+            shareUrl: null,
+            pairingState: 'connecting',
+            pairingError: null,
             items: [],
             privateItems: [],
             incomingFiles: {},
@@ -105,6 +124,7 @@ export const useBoardStore = create<BoardState>()(
             setMyId: (id) => set({ myId: id }),
             setConnectionState: (state) => set({ connectionState: state }),
             setRoomCode: (code) => set({ roomCode: code }),
+            setLocalSession: (session) => set(session),
 
             addPeer: (peerId) => set((state) => ({
                 peers: state.peers.includes(peerId) ? state.peers : [...state.peers, peerId]

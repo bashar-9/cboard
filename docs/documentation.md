@@ -1,33 +1,45 @@
 # Project Documentation & Memory
 
 ## Overview
-A local network text and file sharing service (similar to Apple's Universal Clipboard/AirDrop). It allows devices on the same local network to share text and files in real-time via a web browser.
+A browser-based text and file sharing service with an online Vercel mode and an offline local-network mode.
+
+## Current Active Release
+
+- **Online:** Vercel + Pusher public room, grouped by public IP
+- **Local:** Host + one Receiver through a custom Node.js/Next.js server
+- **Local Pairing:** Open Public room or PIN-locked Private room
+- **Transfer:** Direct browser-to-browser WebRTC data channels
+- **Cloud features:** Supabase Private Mode is preserved but hidden and inactive
+- **Online signaling:** Pusher carries WebRTC connection setup only
 
 ## Core Architecture & Tech Stack
 - **Framework:** Next.js (App Router)
-- **Deployment:** Vercel
+- **Runtime:** Vercel online or local Node.js server (`server.mjs`)
 - **Styling & Physics:** Tailwind CSS + Shadcn/ui + Framer Motion
 - **State Management:** Zustand
-- **Networking/Data Transfer (Public Mode):** WebRTC (Peer-to-Peer) for direct, serverless file/text transfer on the local network.
-- **Signaling (Public Mode):** Pusher Channels for initial device discovery and WebRTC handshake.
-- **Backend & Auth (Private Mode):** Supabase (Auth, Postgres DB, Database Webhooks/Realtime) for persistent, secure cross-device sync.
+- **Networking/Data Transfer:** WebRTC for direct local file/text transfer.
+- **Signaling:** Pusher online; a same-origin WebSocket server locally.
+- **Legacy Cloud Code:** Supabase authentication and sync files remain for a future version but are not mounted or shown.
 
 ## Key Mechanisms
-### 1. Peer Discovery & Grouping
-- **Primary (Internet Available):** Users are grouped automatically based on their public IP address. Devices with matching public IPs are placed in the same signaling "room."
-- **Fallback (No Internet):** A "Local First" approach. Device A displays a QR code containing its local IP address. Device B scans it to connect directly over the local Wi-Fi router.
+### 1. Local Pairing
+- The first browser opened on the Host device receives the Host role.
+- The server shows the LAN address and lets the Host choose Public or PIN-locked Private.
+- One Receiver opens that address and joins under the chosen rule.
+- Extra devices are rejected.
 
-- All file and text transfers occur over **WebRTC Data Channels**.
+- All file and text transfers occur over **WebRTC Data Channels** using local ICE candidates only.
 - Data channels support chunking and reassembly to transfer **bundled posts** containing text and multiple files up to 50MB.
-- Files never touch Vercel's servers, ensuring zero bandwidth cost for transfers and strict privacy.
-- The web app operates as a Progressive Web App (PWA) so it can load from the device cache when offline.
+- Files never touch a cloud service or the local signaling server.
+- The Host's local Next.js server serves the full web app without internet.
 - **File Data Persistence:** After sharing, ephemeral `blob:` URLs are converted to base64 `data:` URIs. This enables Zustand `persist` to save post items (with attachments ≤ 4MB) to `localStorage`, surviving page refreshes. Posts with attachments exceeding 4MB retain metadata but strip binary data from persistence — they are re-transferred via WebRTC from connected peers.
 - **WebRTC Signaling Pattern:** Uses "Perfect Negotiation" to avoid Glare/State errors when peers connect. A deterministic comparison of string User IDs decides which device is "polite" (waits for offer) vs "impolite" (sends offer). WebRTC signaling is serialized with a Promise chain to avoid `InvalidStateError` race conditions caused by network or signaling duplicates.
-- **Network Singletons:** Active `WebRTCManager` and Pusher `Channel` references are stored as module-level singletons (outside React component scopes) to gracefully handle React Strict Mode double hooks avoiding duplicated peer handshakes.
-- **Persistent Identity:** A persistent device ID is stored in `localStorage`. This prevents the "Sender" attribution resolving to "Someone" when a user refreshes the page and gets assigned a new Pusher socket ID.
+- **Network Singletons:** Active `WebRTCManager` and WebSocket references are stored as module-level singletons to avoid duplicate peer handshakes.
+- **Session Identity:** The local server gives each connected browser a random session ID.
 - **State Synchronization:** New peers passively receive the full message history from the existing active peer upon data channel connection over WebRTC. Real-time actions, such as item deletion, are broadcasted globally to ensure all peers remain in sync.
 
-### 2. Private Mode & Authentication
+### 2. Parked Private Mode & Authentication
+The following code is retained but inactive. `PRIVATE_MODE_ENABLED` is false, the auth provider is not mounted, Private controls are hidden, and Supabase middleware does not run.
 - **OAuth Providers:** Google OAuth and Magic Link Email login are supported. Next.js server-side intercept tunnels (`/auth/callback`) exchange query `?code` tokens for secure SSR user sessions. The callback uses native `new URL(request.url)` parsing to handle Vercel proxy headers flawlessly during domain redirects.
 - **State Hydration:** A global `<AuthProvider>` wrapper at the root layout listens dynamically for Supabase `onAuthStateChange` events, linking remote identity directly into the local `useBoardStore` Zustand store without full page lifecycles.
 - **Data Sync, RLS, & Keys:** Utilizing modern `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` strings (no legacy anon keys). When toggled to Private Mode, the client bypasses WebRTC and reads/writes exclusively to a `private_items` Supabase table. Row Level Security limits visibility strictly to the authenticated `user_id`.
@@ -70,9 +82,10 @@ src/
 │   │   └── page.tsx          # Authentication Form (Google Auth + Email)
 │   ├── globals.css           # Global Tailwind CSS and utilities
 │   ├── layout.tsx            # Root layout (Theme provider setup + AuthProvider wrap)
-│   └── page.tsx              # Main Board view (flex column, masonry grid)
+│   └── page.tsx              # Active local Host/Receiver board
 ├── components/
 │   ├── board/
+│   │   ├── LocalConnectionPanel.tsx  # Host address/PIN and Receiver join UI
 │   │   ├── BoardItemCard.tsx         # Card with truncation + opens detail modal
 │   │   ├── Header.tsx                # App header & connection status (Synced/Offline logic)
 │   │   ├── PublicHowItWorks.tsx      # Initial empty state onboarding guide for peer-to-peer sharing
@@ -84,15 +97,16 @@ src/
 │   │   └── AuthProvider.tsx          # Global Supabase Session Context Hydration
 │   └── ui/                   # Shadcn UI generic components
 ├── hooks/
-│   ├── useBoardNetwork.ts    # WebRTC and Pusher networking logic
+│   ├── useBoardNetwork.ts    # Local WebSocket signaling and WebRTC transfer logic
 │   └── usePrivateNetwork.ts  # Supabase Realtime synchronization layer
 ├── lib/
-│   ├── pusher.ts             # Pusher client singleton
+│   ├── pusher.ts             # Legacy internet signaling code; inactive
 │   ├── supabase/             # Supabase Client Wrappers (browser/server/middleware)
 │   ├── utils.ts              # Tailwind/general utils
 │   └── webrtc.ts             # Custom RTCPeerConnection wrapper
 └── store/
     └── useBoardStore.ts      # Zustand global state (Items, UI states, User Auth context)
+server.mjs                    # Secure local HTTP and WebSocket host
 ```
 
 ## Project Files Reference

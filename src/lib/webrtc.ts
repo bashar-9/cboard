@@ -13,6 +13,7 @@ export class WebRTCManager {
     private peers: Map<string, RTCPeerConnection> = new Map();
     private channels: Map<string, RTCDataChannel> = new Map();
     private myId: string;
+    private online: boolean;
 
     // Callbacks
     public onSignal?: (msg: SignalMessage) => void;
@@ -21,17 +22,14 @@ export class WebRTCManager {
     public onChannelOpen?: (peerId: string) => void;
     public onDisconnect?: (peerId: string) => void;
 
-    constructor(myId: string) {
+    constructor(myId: string, online = false) {
         this.myId = myId;
+        this.online = online;
     }
 
-    // Common config for STUN servers
     private get rtcConfig() {
         return {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' }
-            ]
+            iceServers: this.online ? [{ urls: 'stun:stun.l.google.com:19302' }] : []
         };
     }
 
@@ -75,8 +73,8 @@ export class WebRTCManager {
             this.setupChannel(peerId, channel);
 
             // Proactively trigger the first offer since some browsers lag on negotiationneeded
+            makingOffer = true;
             pc.createOffer().then(offer => {
-                makingOffer = true;
                 pc.setLocalDescription(offer).then(() => {
                     this.onSignal?.({
                         to: peerId,
@@ -168,20 +166,25 @@ export class WebRTCManager {
         }
     }
 
-    public broadcast(data: string | ArrayBuffer) {
-        this.channels.forEach((channel) => {
-            if (channel.readyState === 'open') {
-                if (typeof data === 'string') channel.send(data);
-                else channel.send(data);
-            }
-        });
+    private async sendWhenReady(channel: RTCDataChannel, data: string | ArrayBuffer) {
+        const highWaterMark = 1024 * 1024;
+        while (channel.readyState === 'open' && channel.bufferedAmount > highWaterMark) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        if (channel.readyState !== 'open') throw new Error('Peer disconnected during transfer.');
+        if (typeof data === 'string') channel.send(data);
+        else channel.send(data);
     }
 
-    public sendTo(peerId: string, data: string | ArrayBuffer) {
+    public async broadcast(data: string | ArrayBuffer) {
+        const openChannels = [...this.channels.values()].filter((channel) => channel.readyState === 'open');
+        await Promise.all(openChannels.map((channel) => this.sendWhenReady(channel, data)));
+    }
+
+    public async sendTo(peerId: string, data: string | ArrayBuffer) {
         const channel = this.channels.get(peerId);
         if (channel?.readyState === 'open') {
-            if (typeof data === 'string') channel.send(data);
-            else channel.send(data);
+            await this.sendWhenReady(channel, data);
         }
     }
 

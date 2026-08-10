@@ -1,7 +1,12 @@
-import { updateSession } from './lib/supabase/middleware'
+import { NextResponse } from 'next/server'
 import { type NextRequest } from 'next/server'
+import { PRIVATE_MODE_ENABLED } from './lib/features'
 
 export default async function proxy(request: NextRequest) {
+    // Private cloud session handling is intentionally inactive in local-only mode.
+    if (!PRIVATE_MODE_ENABLED) return NextResponse.next()
+
+    const { updateSession } = await import('./lib/supabase/middleware')
     return await updateSession(request)
 }
 

@@ -2,23 +2,19 @@
 
 import { useBoardStore } from '@/store/useBoardStore';
 import { useBoardNetworkInit } from '@/hooks/useBoardNetwork';
-import { usePrivateNetworkInit } from '@/hooks/usePrivateNetwork';
 import { Header } from '@/components/board/Header';
 import { ShareInput } from '@/components/board/ShareInput';
 import { IncomingFilesProgress } from '@/components/board/IncomingFilesProgress';
+import { LocalConnectionPanel } from '@/components/board/LocalConnectionPanel';
 import { BoardItemCard } from '@/components/board/BoardItemCard';
 import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
-import { PrivateHowItWorks } from '@/components/board/PrivateHowItWorks';
 import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 
 export default function Home() {
-  const { items, privateItems, myId, roomCode, debugLogs, isPrivateMode } = useBoardStore();
+  const { items, myId, debugLogs, localRole } = useBoardStore();
 
   useBoardNetworkInit();
-  usePrivateNetworkInit();
-
-  const displayedItems = isPrivateMode ? privateItems : items;
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 selection:bg-indigo-200 dark:selection:bg-indigo-900 transition-colors duration-300 relative overflow-hidden">
@@ -29,16 +25,17 @@ export default function Home() {
 
       {/* Scrollable board area */}
       <main className="flex-1 overflow-y-auto pb-28">
-        <div className={`max-w-6xl mx-auto w-full px-4 sm:px-6 h-full flex flex-col pt-6 ${displayedItems.length === 0 ? 'justify-center' : 'justify-start'
-          }`}>
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 min-h-full flex flex-col justify-start pt-6">
           <IncomingFilesProgress />
 
-          {displayedItems.length === 0 ? (
-            isPrivateMode ? <PrivateHowItWorks key="private-guide" /> : <PublicHowItWorks key="public-guide" />
+          <LocalConnectionPanel />
+
+          {items.length === 0 ? (
+            <PublicHowItWorks key="public-guide" />
           ) : (
             <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
               <AnimatePresence mode="popLayout">
-                {displayedItems.map((item) => (
+                {items.map((item) => (
                   <BoardItemCard key={item.id} item={item} />
                 ))}
               </AnimatePresence>
@@ -56,7 +53,7 @@ export default function Home() {
           <details>
             <summary className="cursor-pointer font-bold mb-1">Debug</summary>
             <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-xl max-h-48 overflow-y-auto transition-colors duration-200 border border-slate-200 dark:border-slate-800">
-              ID: {myId || 'None'} | Room: {roomCode || 'None'}<br />
+              ID: {myId || 'None'} | Role: {localRole || 'None'}<br />
               {debugLogs?.map((log, i) => <div key={i}>{log}</div>)}
             </div>
           </details>

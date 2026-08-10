@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CBoard
 
-## Getting Started
+CBoard shares text and files directly between browsers in two ways:
 
-First, run the development server:
+- **Online:** open the Vercel website on devices using the same internet connection.
+- **Local:** one laptop hosts CBoard for a second device on the same router, even without internet.
+
+## How it works
+
+- A local room can be **Public** or protected by a six-digit **PIN**.
+- Local rooms allow one Host and one Receiver.
+- Text and files move directly between the two browsers with WebRTC.
+- Items expire after 15 minutes. Files are limited to 50 MB each.
+
+The existing Supabase mode is preserved in the code but is hidden and inactive. Active modes make no Supabase calls.
+
+## Vercel
+
+The online public room uses Pusher for connection setup. Keep these variables configured in Vercel:
+
+- `PUSHER_APP_ID`
+- `NEXT_PUBLIC_PUSHER_APP_KEY`
+- `PUSHER_SECRET`
+- `NEXT_PUBLIC_PUSHER_CLUSTER`
+- `PUSHER_COOKIE_SECRET` (recommended)
+
+## Start CBoard
+
+Install [Node.js](https://nodejs.org/) 20 or newer, then run:
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+The terminal shows two addresses:
+
+- The Host opens `http://127.0.0.1:3000`.
+- The Receiver opens the displayed local address, such as `http://192.168.1.5:3000`.
+
+Keep the Host laptop, terminal, and local server running. The Host browser page must remain open for sharing.
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm test
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Security
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- One Host and one Receiver only.
+- PIN approval with attempt limits.
+- Same-origin WebSocket checks.
+- Strict signaling and incoming file validation.
+- Browser security headers.
+- Files and text are not uploaded to Pusher or Supabase.
+- Pusher carries connection setup messages only in online mode.
+- Dependency audit currently reports zero known vulnerabilities.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Current limitation
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+For offline local use, the Host laptop and local server must stay running. The online Vercel version does not have this requirement.

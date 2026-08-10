@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useBoardStore } from '@/store/useBoardStore';
 import { Loader2, ArrowRight, ShieldCheck, Zap, Cloud } from 'lucide-react';
 import { toast } from 'sonner';
+import { PRIVATE_MODE_ENABLED } from '@/lib/features';
 
 // Google SVG Icon for the OAuth button
 const GoogleIcon = () => (
@@ -42,6 +43,18 @@ export default function AuthPage() {
     const router = useRouter();
     const setUser = useBoardStore(state => state.setUser);
     const setIsPrivateMode = useBoardStore(state => state.setIsPrivateMode);
+
+    if (!PRIVATE_MODE_ENABLED) {
+        return (
+            <main className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 px-6">
+                <div className="max-w-md text-center">
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Private Mode is unavailable</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">CBoard currently runs as a local Host and Receiver only.</p>
+                    <Button className="mt-5 rounded-xl" onClick={() => router.replace('/')}>Return to CBoard</Button>
+                </div>
+            </main>
+        );
+    }
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -81,8 +94,8 @@ export default function AuthPage() {
                     router.push('/');
                 }
             }
-        } catch (err: any) {
-            toast.error(err.message || 'Authentication failed');
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Authentication failed');
         } finally {
             setLoading(false);
         }
@@ -101,8 +114,8 @@ export default function AuthPage() {
                 }
             });
             if (error) throw error;
-        } catch (err: any) {
-            toast.error(err.message || 'Google authentication failed');
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Google authentication failed');
             setIsGoogleLoading(false);
         }
     };
@@ -230,7 +243,7 @@ export default function AuthPage() {
                                 <div>
                                     <h4 className="font-semibold text-slate-800 dark:text-slate-200">Offline Queuing</h4>
                                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed text-pretty">
-                                        Send links from your phone, and they'll be waiting on your laptop when you open it.
+                                        Send links from your phone, and they&apos;ll be waiting on your laptop when you open it.
                                     </p>
                                 </div>
                             </div>
@@ -254,7 +267,7 @@ export default function AuthPage() {
                                 <div>
                                     <h4 className="font-semibold text-slate-800 dark:text-slate-200">Universal Access</h4>
                                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed text-pretty">
-                                        Access your unified board from any network, not just local Wi-Fi. It's like Apple Handoff, but everywhere.
+                                        Access your unified board from any network, not just local Wi-Fi. It&apos;s like Apple Handoff, but everywhere.
                                     </p>
                                 </div>
                             </div>

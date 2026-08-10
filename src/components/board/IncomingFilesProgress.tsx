@@ -18,13 +18,13 @@ export function IncomingFilesProgress() {
                             <Download className="w-4 h-4 animate-bounce text-indigo-500" /> Receiving {file.fileName}
                         </span>
                         <span className="text-indigo-700 dark:text-indigo-300 font-mono text-xs font-bold">
-                            {Math.round((file.receivedBytes / file.fileSize) * 100)}%
+                            {file.fileSize === 0 ? 100 : Math.round((file.receivedBytes / file.fileSize) * 100)}%
                         </span>
                     </div>
                     <div className="h-2 w-full bg-indigo-200/50 dark:bg-indigo-950 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-indigo-500 rounded-full transition-all duration-300 ease-out"
-                            style={{ width: `${Math.max(2, (file.receivedBytes / file.fileSize) * 100)}%` }}
+                            style={{ width: `${file.fileSize === 0 ? 100 : Math.max(2, (file.receivedBytes / file.fileSize) * 100)}%` }}
                         />
                     </div>
                 </div>
