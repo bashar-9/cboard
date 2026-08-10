@@ -11,6 +11,7 @@ import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
 export function Header() {
     const { connectionState, networkMode, localRoomPrivacy, localRole, pairingState } = useBoardStore();
     const waiting = pairingState === 'hosting' || pairingState === 'needs-pin' || pairingState === 'joining' || pairingState === 'connecting';
+    const waitingLabel = pairingState === 'needs-pin' ? 'PIN needed' : networkMode === 'online' ? 'Room ready' : 'Waiting';
 
     return (
         <motion.header
@@ -62,7 +63,7 @@ export function Header() {
                     ) : waiting ? (
                         <motion.div key="waiting" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-full border border-amber-200/60 dark:border-amber-500/20">
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                            <span>Waiting</span>
+                            <span>{waitingLabel}</span>
                         </motion.div>
                     ) : (
                         <motion.div key="offline" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 rounded-full border border-red-200/60 dark:border-red-500/20">

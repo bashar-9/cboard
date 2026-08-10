@@ -30,16 +30,16 @@ const localSteps = [
 
 const onlineSteps = [
     {
-        icon: Wifi,
-        title: 'Use the same network',
-        description: 'Open the Vercel website on devices using the same Wi-Fi or router.',
+        icon: Globe,
+        title: 'Create a room',
+        description: 'Choose Public or Private on the first device.',
         accent: 'from-blue-500 to-cyan-400',
         accentBg: 'bg-blue-500/10 dark:bg-blue-500/20',
     },
     {
-        icon: Globe,
-        title: 'Join the public board',
-        description: 'Devices on that network are discovered automatically. No account or PIN is needed.',
+        icon: Wifi,
+        title: 'Open the exact link',
+        description: 'Copy the room link and open it on the second device. Private rooms also ask for the PIN.',
         accent: 'from-violet-500 to-purple-400',
         accentBg: 'bg-violet-500/10 dark:bg-violet-500/20',
     },
@@ -59,7 +59,7 @@ const localFeatures = [
 ];
 
 const onlineFeatures = [
-    { icon: Globe, label: 'Public room', sublabel: 'Same internet connection' },
+    { icon: Globe, label: 'Exact room link', sublabel: 'No network guessing' },
     { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
     { icon: Zap, label: 'Peer-to-peer', sublabel: 'Content avoids the cloud' },
 ];
@@ -101,7 +101,7 @@ export function PublicHowItWorks({ className }: { className?: string }) {
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base mt-3 max-w-md mx-auto leading-relaxed">
                     {online
-                        ? 'Open CBoard on the same network. Shared content stays peer-to-peer.'
+                        ? 'Create a room, then open its exact link on the second device.'
                         : 'Host a public or PIN-locked board on your local network, even without internet.'}
                 </p>
             </motion.div>
