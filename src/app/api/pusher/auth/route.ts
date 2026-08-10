@@ -43,15 +43,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Start a board session first.' }, { status: 401 });
     }
 
-    const roomToken = cookieStore.get('room_access_token')?.value;
-    const access = roomToken ? verifyRoomAccess(roomToken) : null;
-    const hasSignedRoomAccess = access?.roomName === channelName && access.userId === userId;
-    if (channelName.startsWith('presence-private-') && !hasSignedRoomAccess) {
-        return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
-    }
-    if (!channelName.startsWith('presence-private-')
-        && !hasSignedRoomAccess
-        && channelName !== getRoomName(getClientIp(request))) {
+    if (channelName.startsWith('presence-private-')) {
+        const roomToken = cookieStore.get('room_access_token')?.value;
+        const access = roomToken ? verifyRoomAccess(roomToken) : null;
+        if (!access || access.roomName !== channelName || access.userId !== userId) {
+            return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
+        }
+    } else if (channelName !== getRoomName(getClientIp(request))) {
         return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
     }
 

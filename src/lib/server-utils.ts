@@ -39,7 +39,7 @@ function getSigningSecret() {
     return process.env.PUSHER_COOKIE_SECRET || process.env.PUSHER_SECRET || null;
 }
 
-const ACCESS_ROOM_PATTERN = /^presence-(?:private-[a-f0-9]{32}|room-[a-f0-9]{12})$/;
+const ACCESS_ROOM_PATTERN = /^presence-private-[a-f0-9]{32}$/;
 
 function hmac(value: string) {
     const secret = getSigningSecret();

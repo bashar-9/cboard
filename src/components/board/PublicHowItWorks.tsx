@@ -30,16 +30,16 @@ const localSteps = [
 
 const onlineSteps = [
     {
-        icon: Globe,
-        title: 'Create a room',
-        description: 'Choose Public or Private on the first device.',
+        icon: Wifi,
+        title: 'Use the same network',
+        description: 'Connect both devices to the same Wi-Fi or router.',
         accent: 'from-blue-500 to-cyan-400',
         accentBg: 'bg-blue-500/10 dark:bg-blue-500/20',
     },
     {
-        icon: Wifi,
-        title: 'Open the exact link',
-        description: 'Copy the room link and open it on the second device. Private rooms also ask for the PIN.',
+        icon: Globe,
+        title: 'Open CBoard',
+        description: 'Open cboard.basharramadan.com on both devices. Public mode connects automatically.',
         accent: 'from-violet-500 to-purple-400',
         accentBg: 'bg-violet-500/10 dark:bg-violet-500/20',
     },
@@ -59,7 +59,7 @@ const localFeatures = [
 ];
 
 const onlineFeatures = [
-    { icon: Globe, label: 'Exact room link', sublabel: 'No network guessing' },
+    { icon: Globe, label: 'Public room', sublabel: 'Automatic on one network' },
     { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
     { icon: Zap, label: 'Peer-to-peer', sublabel: 'Content avoids the cloud' },
 ];
@@ -101,7 +101,7 @@ export function PublicHowItWorks({ className }: { className?: string }) {
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base mt-3 max-w-md mx-auto leading-relaxed">
                     {online
-                        ? 'Create a room, then open its exact link on the second device.'
+                        ? 'Open CBoard on two devices using the same internet connection.'
                         : 'Host a public or PIN-locked board on your local network, even without internet.'}
                 </p>
             </motion.div>

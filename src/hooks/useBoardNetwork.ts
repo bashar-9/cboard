@@ -485,7 +485,6 @@ function startOnlineConnection(isActive: () => boolean) {
     const store = useBoardStore.getState();
     const searchParams = new URLSearchParams(window.location.search);
     const inviteToken = searchParams.get('invite');
-    const publicInviteToken = searchParams.get('public');
     const createPrivate = searchParams.get('create') === 'private';
     store.setLocalSession({
         networkMode: 'online',
@@ -592,24 +591,6 @@ function startOnlineConnection(isActive: () => boolean) {
 
     void (async () => {
         try {
-            if (publicInviteToken) {
-                const response = await fetch('/api/room', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'join-public', inviteToken: publicInviteToken }),
-                });
-                const session: unknown = await response.json();
-                if (!response.ok) throw new Error('This Public room link expired. Ask for a new link.');
-                connectSession(session);
-                store.setLocalSession({
-                    localRoomPrivacy: 'public',
-                    shareUrl: window.location.href,
-                    pairingState: 'joining',
-                    pairingError: null,
-                });
-                return;
-            }
-
             if (inviteToken) {
                 const resumedSession = await resumePrivateSession(inviteToken);
                 if (resumedSession) {
@@ -684,11 +665,6 @@ function startOnlineConnection(isActive: () => boolean) {
             const response = await fetch('/api/room', { cache: 'no-store' });
             if (!response.ok) throw new Error('Could not create the public room.');
             const session: unknown = await response.json();
-            if (!isRecord(session) || typeof session.inviteToken !== 'string') throw new Error('Could not create the Public room link.');
-            store.setLocalSession({
-                shareUrl: `${window.location.origin}/?public=${encodeURIComponent(session.inviteToken)}`,
-                pairingError: null,
-            });
             connectSession(session);
         } catch (error) {
             showError(error, 'Online room is unavailable.');

@@ -47,7 +47,7 @@ export function LocalConnectionPanel() {
                     <div>
                         <h2 className="font-bold text-lg">Online Public room</h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {pairingState === 'paired' ? 'Connected to another device.' : 'Room ready. Open the link below on the second device.'}
+                            {pairingState === 'paired' ? 'Connected to another device.' : 'Room ready. Open CBoard on the second device.'}
                         </p>
                     </div>
                 </div>
@@ -59,19 +59,7 @@ export function LocalConnectionPanel() {
                         <Lock className="w-4 h-4" /> Private
                     </button>
                 </div>
-                {shareUrl && (
-                    <div className="mt-3">
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Open this exact link on the other device:</p>
-                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 p-2 pl-4">
-                            <LinkIcon className="w-4 h-4 text-slate-400 shrink-0" />
-                            <span className="text-sm font-mono truncate flex-1">{shareUrl}</span>
-                            <Button variant="ghost" size="sm" onClick={copyShareUrl} title="Copy Public room link" className="shrink-0">
-                                {copied ? <Check className="w-4 h-4 text-emerald-500 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-                                {copied ? 'Copied' : 'Copy'}
-                            </Button>
-                        </div>
-                    </div>
-                )}
+                <p className="text-xs text-slate-400 mt-4 text-center">Anyone using this domain on the same internet connection joins automatically.</p>
             </div>
         );
     }
