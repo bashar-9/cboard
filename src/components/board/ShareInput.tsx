@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
 import { useBoardStore } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip, File as FileIcon, X } from 'lucide-react';
+import { Globe, Loader2, Lock, Send, Paperclip, File as FileIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -99,7 +99,13 @@ export function ShareInput() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            <div className="max-w-3xl mx-auto px-3 pb-4 pt-2 pointer-events-auto">
+            <div className="pointer-events-auto mx-auto max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+                <div className="mb-1.5 flex justify-center">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full border bg-white/90 px-2.5 py-1 text-[10px] font-semibold shadow-sm backdrop-blur-xl dark:bg-slate-900/90 ${localRoomPrivacy === 'private' ? 'border-indigo-200 text-indigo-600 dark:border-indigo-500/30 dark:text-indigo-400' : 'border-emerald-200 text-emerald-600 dark:border-emerald-500/30 dark:text-emerald-400'}`}>
+                        {localRoomPrivacy === 'private' ? <Lock className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+                        Sending to {localRoomPrivacy === 'private' ? 'Private' : 'Public'}
+                    </span>
+                </div>
                 {/* File chips — above the bar */}
                 <AnimatePresence>
                     {selectedFiles.length > 0 && (
@@ -107,7 +113,7 @@ export function ShareInput() {
                             initial={{ opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 8 }}
-                            className="flex flex-wrap gap-2 mb-2"
+                            className="mb-2 flex gap-2 overflow-x-auto pb-1"
                         >
                             {selectedFiles.map((file, index) => (
                                 <div
@@ -160,9 +166,9 @@ export function ShareInput() {
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
                         maxLength={MAX_TEXT_LENGTH}
-                        placeholder="Share something with the board..."
+                        placeholder="Type or drop a file"
                         rows={1}
-                        className="flex-1 resize-none border-0 bg-transparent py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none leading-relaxed min-h-[44px] max-h-[120px]"
+                        className="max-h-36 min-h-11 flex-1 resize-none border-0 bg-transparent py-3 text-sm leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder:text-slate-500"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                                 e.preventDefault();
@@ -178,12 +184,12 @@ export function ShareInput() {
                         className="h-10 w-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:shadow-none shrink-0 mr-1 mb-1 p-0"
                         title="Send (Enter)"
                     >
-                        <Send className="w-4 h-4" />
+                        {isSharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                 </div>
 
                 {/* Subtle hint */}
-                <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 mt-1.5 select-none">
+                <p className="mt-1.5 hidden select-none text-center text-[10px] text-slate-400 dark:text-slate-600 sm:block">
                     Enter to send · Shift + Enter for a new line
                 </p>
             </div>

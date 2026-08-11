@@ -6,8 +6,9 @@ import { Header } from '@/components/board/Header';
 import { ShareInput } from '@/components/board/ShareInput';
 import { IncomingFilesProgress } from '@/components/board/IncomingFilesProgress';
 import { LocalConnectionPanel } from '@/components/board/LocalConnectionPanel';
+import { RoomTabs } from '@/components/board/RoomTabs';
+import { BoardEmptyState } from '@/components/board/BoardEmptyState';
 import { BoardItemCard } from '@/components/board/BoardItemCard';
-import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
 import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 
@@ -24,18 +25,19 @@ export default function Home() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-[500px] bg-gradient-to-b from-indigo-500/10 via-purple-500/5 to-transparent dark:from-indigo-500/15 dark:via-purple-500/5 dark:to-transparent blur-3xl pointer-events-none -z-10" />
 
       <Header />
+      <RoomTabs />
 
       {/* Scrollable board area */}
-      <main className="flex-1 overflow-y-auto pb-28">
-        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 min-h-full flex flex-col justify-start pt-6">
+      <main className="flex-1 overflow-y-auto pb-32 sm:pb-28">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col justify-start px-3 pt-4 sm:px-6 sm:pt-5">
           <IncomingFilesProgress />
 
           <LocalConnectionPanel />
 
           {activeItems.length === 0 ? (
-            <PublicHowItWorks key="public-guide" />
+            <BoardEmptyState />
           ) : (
-            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
+            <div className="columns-1 gap-3 sm:columns-2 sm:gap-4 lg:columns-3 xl:columns-4">
               <AnimatePresence mode="popLayout">
                 {activeItems.map((item) => (
                   <BoardItemCard key={item.id} item={item} />
