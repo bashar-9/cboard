@@ -26,6 +26,7 @@ interface PresenceMembers {
 interface PresenceChannel extends Channel { members?: PresenceMembers }
 interface RoomRuntime {
     scope: LocalRoomPrivacy;
+    roomId: string;
     myId: string;
     rtc: WebRTCManager;
     peers: Set<string>;
@@ -58,6 +59,10 @@ function isSafeId(value: unknown): value is string {
     return typeof value === 'string' && value.length > 0 && value.length <= 64 && /^[a-zA-Z0-9_-]+$/.test(value);
 }
 
+function isSafeRoomId(value: unknown): value is string {
+    return typeof value === 'string' && value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
 function isSafeAttachment(value: unknown): value is SharedAttachment {
     if (!isRecord(value)) return false;
     return isSafeId(value.id) && typeof value.fileName === 'string' && value.fileName.length > 0
@@ -77,17 +82,19 @@ function isSafeItem(value: unknown): value is SharedItem {
             && value.attachments.length <= MAX_FILES && value.attachments.every(isSafeAttachment)));
 }
 
-export function sanitizeIncomingItem(value: unknown, scope: LocalRoomPrivacy = 'public'): SharedItem | null {
+export function sanitizeIncomingItem(value: unknown, scope: LocalRoomPrivacy, roomId: string): SharedItem | null {
     if (!isSafeItem(value)) return null;
+    const now = Date.now();
     return {
         id: value.id,
         type: value.type,
         scope,
+        roomId,
         content: value.content,
         attachments: value.attachments?.map(({ id, fileName, fileSize, mimeType }) => ({ id, fileName, fileSize, mimeType })),
         senderId: value.senderId,
-        timestamp: value.timestamp,
-        expiresAt: value.expiresAt,
+        timestamp: Math.min(value.timestamp, now),
+        expiresAt: Math.min(value.expiresAt, now + 15 * 60 * 1000),
     };
 }
 
@@ -156,7 +163,7 @@ async function sendStoredFilesToPeer(runtime: RoomRuntime, peerId: string, items
     }
 }
 
-function handleIncomingData(scope: LocalRoomPrivacy, data: unknown) {
+function handleIncomingData(scope: LocalRoomPrivacy, roomId: string, data: unknown) {
     const store = useBoardStore.getState();
     try {
         if (typeof data === 'string') {
@@ -164,20 +171,20 @@ function handleIncomingData(scope: LocalRoomPrivacy, data: unknown) {
             const payload: unknown = JSON.parse(data);
             if (!isRecord(payload) || typeof payload.type !== 'string') return;
             if (payload.type === 'text' || payload.type === 'post') {
-                const item = sanitizeIncomingItem(payload.item, scope);
+                const item = sanitizeIncomingItem(payload.item, scope, roomId);
                 if (item) store.addItem(item);
                 return;
             }
             if (payload.type === 'sync' && Array.isArray(payload.items)) {
                 const items = payload.items.slice(0, MAX_ITEMS_PER_SYNC)
-                    .map((item) => sanitizeIncomingItem(item, scope))
+                    .map((item) => sanitizeIncomingItem(item, scope, roomId))
                     .filter((item): item is SharedItem => item !== null);
                 store.addItems(items);
                 return;
             }
             if (payload.type === 'delete' && isSafeId(payload.itemId)) {
-                const target = store.items.find((item) => item.id === payload.itemId);
-                if (target && (target.scope || 'public') === scope) store.deleteItem(payload.itemId);
+                const target = store.items.find((item) => item.id === payload.itemId && item.roomId === roomId);
+                if (target?.roomId === roomId) store.deleteItem(roomId, payload.itemId);
                 return;
             }
             if (payload.type === 'file-start') {
@@ -187,15 +194,17 @@ function handleIncomingData(scope: LocalRoomPrivacy, data: unknown) {
                     || typeof mimeType !== 'string' || mimeType.length > 100 || typeof totalChunks !== 'number'
                     || !Number.isInteger(totalChunks) || totalChunks < 0
                     || totalChunks > Math.ceil(MAX_FILE_SIZE / CHUNK_SIZE)) return;
-                store.startIncomingFile({ id: fileId, itemId, fileName, fileSize, mimeType, receivedBytes: 0,
+                const targetItem = store.items.find((item) => item.id === itemId && item.roomId === roomId);
+                if (!targetItem) return;
+                store.startIncomingFile({ id: fileId, itemId, roomId, fileName, fileSize, mimeType, receivedBytes: 0,
                     totalChunks, receivedChunks: 0, chunks: [] });
                 return;
             }
             if (payload.type === 'file-complete' && isSafeId(payload.fileId)) {
-                const incoming = store.incomingFiles[payload.fileId];
-                if (!incoming) return;
+                const incoming = store.incomingFiles[`${roomId}:${payload.fileId}`];
+                if (!incoming || incoming.roomId !== roomId) return;
                 if (incoming.receivedBytes !== incoming.fileSize || incoming.receivedChunks !== incoming.totalChunks) {
-                    store.completeIncomingFile(payload.fileId);
+                    store.completeIncomingFile(payload.fileId, roomId);
                     return;
                 }
                 const fullBuffer = new Uint8Array(incoming.receivedBytes);
@@ -204,28 +213,28 @@ function handleIncomingData(scope: LocalRoomPrivacy, data: unknown) {
                     fullBuffer.set(new Uint8Array(chunk), offset);
                     offset += chunk.byteLength;
                 }
-                store.attachFileToItem(incoming.itemId || incoming.id, incoming.id,
+                store.attachFileToItem(roomId, incoming.itemId || incoming.id, incoming.id,
                     URL.createObjectURL(new Blob([fullBuffer], { type: incoming.mimeType })));
-                store.completeIncomingFile(payload.fileId);
+                store.completeIncomingFile(payload.fileId, roomId);
             }
             return;
         }
         if (data instanceof ArrayBuffer) {
             if (data.byteLength <= ID_LENGTH || data.byteLength > ID_LENGTH + CHUNK_SIZE) return;
             const fileId = new TextDecoder().decode(new Uint8Array(data.slice(0, ID_LENGTH))).trim();
-            const incoming = store.incomingFiles[fileId];
+            const incoming = store.incomingFiles[`${roomId}:${fileId}`];
             const chunk = data.slice(ID_LENGTH);
             if (!incoming || incoming.receivedChunks >= incoming.totalChunks
                 || incoming.receivedBytes + chunk.byteLength > incoming.fileSize) return;
-            store.updateIncomingFileProgress(fileId, chunk, incoming.totalChunks);
+            store.updateIncomingFileProgress(fileId, roomId, chunk, incoming.totalChunks);
         }
     } catch { store.addDebugLog('Rejected an invalid incoming message.'); }
 }
 
-function createRuntime(scope: LocalRoomPrivacy, myId: string, online: boolean, sendSignal: (signal: SignalMessage) => void) {
+function createRuntime(scope: LocalRoomPrivacy, roomId: string, myId: string, online: boolean, sendSignal: (signal: SignalMessage) => void) {
     stopRuntime(scope);
     const rtc = new WebRTCManager(myId, online);
-    const runtime: RoomRuntime = { scope, myId, rtc, peers: new Set() };
+    const runtime: RoomRuntime = { scope, roomId, myId, rtc, peers: new Set() };
     runtimes[scope] = runtime;
     rtc.onSignal = sendSignal;
     rtc.onConnect = (peerId) => {
@@ -240,7 +249,7 @@ function createRuntime(scope: LocalRoomPrivacy, myId: string, online: boolean, s
     };
     rtc.onChannelOpen = async (peerId) => {
         const items = useBoardStore.getState().items
-            .filter((item) => (item.scope || 'public') === scope).slice(0, MAX_ITEMS_PER_SYNC);
+            .filter((item) => item.roomId === roomId).slice(0, MAX_ITEMS_PER_SYNC);
         if (!items.length) return;
         await rtc.sendTo(peerId, JSON.stringify({ type: 'sync', items: items.map((item) => ({
             ...item, fileData: undefined,
@@ -248,7 +257,7 @@ function createRuntime(scope: LocalRoomPrivacy, myId: string, online: boolean, s
         })) }));
         await sendStoredFilesToPeer(runtime, peerId, items);
     };
-    rtc.onData = (_peerId, data) => handleIncomingData(scope, data);
+    rtc.onData = (_peerId, data) => handleIncomingData(scope, roomId, data);
     return runtime;
 }
 
@@ -280,14 +289,14 @@ async function fetchPublicSession() {
 }
 
 function connectOnlineSession(scope: LocalRoomPrivacy, session: unknown, role: 'host' | 'receiver' | null, shareUrl: string | null) {
-    if (!initActive || !isRecord(session) || !isSafeId(session.userId) || typeof session.roomName !== 'string'
+    if (!initActive || !isRecord(session) || !isSafeId(session.userId) || !isSafeRoomId(session.roomName)
         || typeof session.accessToken !== 'string') throw new Error('The room response was invalid.');
-    const runtime = createRuntime(scope, session.userId, true, (signal) => channel.trigger('client-webrtc-signal', signal));
+    const runtime = createRuntime(scope, session.roomName, session.userId, true, (signal) => channel.trigger('client-webrtc-signal', signal));
     runtime.roomName = session.roomName;
     runtime.pusher = createPusherClient(session.accessToken);
     const channel = runtime.pusher.subscribe(session.roomName) as PresenceChannel;
     runtime.channel = channel;
-    updateRoom(scope, { myId: session.userId, role, shareUrl, connectionState: 'connecting', pairingState: 'joining', error: null });
+    updateRoom(scope, { roomId: session.roomName, myId: session.userId, role, shareUrl, connectionState: 'connecting', pairingState: 'joining', error: null });
 
     channel.bind('pusher:subscription_succeeded', (members: PresenceMembers) => {
         if (!initActive || !isSafeId(members.myID)) return;
@@ -366,15 +375,15 @@ function startLocalScope(scope: LocalRoomPrivacy, browserSessionId: string, code
         let message: unknown;
         try { message = JSON.parse(event.data); } catch { return; }
         if (!isRecord(message) || typeof message.type !== 'string') return;
-        if (message.type === 'session' && isSafeId(message.clientId) && (message.role === 'host' || message.role === 'receiver')) {
-            runtime = createRuntime(scope, message.clientId, false, (signal) => {
+        if (message.type === 'session' && isSafeId(message.clientId) && isSafeRoomId(message.roomId) && (message.role === 'host' || message.role === 'receiver')) {
+            runtime = createRuntime(scope, message.roomId, message.clientId, false, (signal) => {
                 if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({
                     type: 'signal', to: signal.to, signal: { type: signal.type, data: signal.data },
                 }));
             });
             runtime.socket = socket;
             const shareUrl = typeof message.shareUrl === 'string' ? message.shareUrl : code ? privateShareUrl(code) : null;
-            updateRoom(scope, { myId: message.clientId, role: message.role, shareUrl,
+            updateRoom(scope, { roomId: message.roomId, myId: message.clientId, role: message.role, shareUrl,
                 connectionState: 'connecting', pairingState: 'joining', error: null });
             return;
         }
@@ -451,7 +460,7 @@ export function leavePrivateRoom() {
     stopRuntime('private');
     localStorage.removeItem(ONLINE_PRIVATE_CODE_KEY);
     localStorage.removeItem(ONLINE_PRIVATE_ROLE_KEY);
-    updateRoom('private', { myId: null, peers: [], role: null, shareUrl: null,
+    updateRoom('private', { roomId: null, myId: null, peers: [], role: null, shareUrl: null,
         connectionState: 'disconnected', pairingState: 'connecting', error: null });
     useBoardStore.getState().setActiveRoom('public');
     window.history.replaceState({}, '', '/');
@@ -495,7 +504,7 @@ export function useBoardNetwork() {
         const attachments = safeFiles.map((file) => ({ id: generateId(), fileName: file.name.slice(0, 255),
             fileSize: file.size, mimeType: file.type.slice(0, 100), fileData: URL.createObjectURL(file) }));
         const item: SharedItem = { id: itemId, type: attachments.length ? 'post' : 'text', content: cleanText,
-            scope, attachments: attachments.length ? attachments : undefined, senderId: runtime.myId,
+            scope, roomId: runtime.roomId, attachments: attachments.length ? attachments : undefined, senderId: runtime.myId,
             timestamp: Date.now(), expiresAt: Date.now() + 15 * 60 * 1000 };
         store.addItem(item);
         await runtime.rtc.broadcast(JSON.stringify({ type: item.type, item: { ...item,
@@ -523,7 +532,7 @@ export function useBoardNetwork() {
                 const dataUri = await blobUrlToDataUri(attachment.fileData);
                 if (dataUri) {
                     URL.revokeObjectURL(attachment.fileData);
-                    store.attachFileToItem(itemId, attachment.id, dataUri);
+                    store.attachFileToItem(runtime.roomId, itemId, attachment.id, dataUri);
                 }
             }
         }
@@ -533,10 +542,14 @@ export function useBoardNetwork() {
     const deleteItem = async (itemId: string) => {
         const store = useBoardStore.getState();
         if (!isSafeId(itemId)) return;
-        const target = store.items.find((item) => item.id === itemId);
-        store.deleteItem(itemId);
-        const runtime = runtimes[target?.scope || 'public'];
-        if (runtime?.peers.size) await runtime.rtc.broadcast(JSON.stringify({ type: 'delete', itemId }));
+        const activeRoomId = store.roomSessions[store.localRoomPrivacy].roomId;
+        const target = store.items.find((item) => item.id === itemId && item.roomId === activeRoomId);
+        if (!target?.roomId) return;
+        store.deleteItem(target.roomId, itemId);
+        const runtime = runtimes[target.scope || 'public'];
+        if (runtime?.roomId === target.roomId && runtime.peers.size) {
+            await runtime.rtc.broadcast(JSON.stringify({ type: 'delete', itemId }));
+        }
     };
     return { sharePost, deleteItem };
 }

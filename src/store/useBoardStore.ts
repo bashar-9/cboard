@@ -8,6 +8,7 @@ export type LocalRoomPrivacy = 'public' | 'private';
 export type PairingState = 'connecting' | 'hosting' | 'joining' | 'paired' | 'room-full' | 'error';
 
 export interface RoomSessionState {
+    roomId: string | null;
     myId: string | null;
     connectionState: 'disconnected' | 'connecting' | 'connected';
     peers: string[];
@@ -18,6 +19,7 @@ export interface RoomSessionState {
 }
 
 const emptyRoomSession = (): RoomSessionState => ({
+    roomId: null,
     myId: null,
     connectionState: 'connecting',
     peers: [],
@@ -42,6 +44,7 @@ export interface IncomingFile {
     fileSize: number;
     mimeType: string;
     senderId?: string;
+    roomId: string;
     receivedBytes: number;
     totalChunks: number;
     receivedChunks: number;
@@ -52,6 +55,7 @@ export interface SharedItem {
     id: string;
     type: SharedItemType;
     scope?: 'public' | 'private';
+    roomId?: string;
     content: string; // Text content or file desc
     attachments?: SharedAttachment[];
     fileData?: string; // legacy base64 / Object URL
@@ -61,6 +65,11 @@ export interface SharedItem {
     senderId: string;
     timestamp: number;
     expiresAt: number;
+}
+
+export function getRoomItems(items: SharedItem[], roomId: string | null) {
+    if (!roomId) return [];
+    return items.filter((item) => item.roomId === roomId);
 }
 
 interface BoardState {
@@ -97,15 +106,15 @@ interface BoardState {
 
     addItem: (item: SharedItem) => void;
     addItems: (items: SharedItem[]) => void;
-    deleteItem: (itemId: string) => void;
+    deleteItem: (roomId: string, itemId: string) => void;
     clearItems: () => void;
 
     removeExpiredItems: () => void;
 
     startIncomingFile: (file: IncomingFile) => void;
-    updateIncomingFileProgress: (id: string, chunk: ArrayBuffer, totalChunks: number) => void;
-    completeIncomingFile: (id: string) => void;
-    attachFileToItem: (itemId: string, attachmentId: string, fileUrl: string) => void;
+    updateIncomingFileProgress: (id: string, roomId: string, chunk: ArrayBuffer, totalChunks: number) => void;
+    completeIncomingFile: (id: string, roomId: string) => void;
+    attachFileToItem: (roomId: string, itemId: string, attachmentId: string, fileUrl: string) => void;
 
     addDebugLog: (log: string) => void;
 
@@ -193,25 +202,26 @@ export const useBoardStore = create<BoardState>()(
                 }
                 return {
                     // Add to top of the list, avoid duplicates by ID just in case
-                    items: state.items.some(i => i.id === item.id)
+                    items: state.items.some((existing) => existing.id === item.id && existing.roomId === item.roomId)
                         ? state.items
                         : [item, ...state.items].sort((a, b) => b.timestamp - a.timestamp)
                 };
             }),
 
             addItems: (newItems) => set((state) => {
-                const existingIds = new Set(state.items.map(i => i.id));
+                const existingIds = new Set(state.items.map((item) => `${item.roomId}:${item.id}`));
                 const uniqueNewItems = [];
                 const seenNewIds = new Set();
 
                 for (const item of newItems) {
-                    if (!existingIds.has(item.id) && !seenNewIds.has(item.id)) {
+                    const key = `${item.roomId}:${item.id}`;
+                    if (!existingIds.has(key) && !seenNewIds.has(key)) {
                         // Compatibility for old items missing expiresAt
                         if (!item.expiresAt) {
                             item.expiresAt = item.timestamp + 15 * 60 * 1000;
                         }
                         uniqueNewItems.push(item);
-                        seenNewIds.add(item.id);
+                        seenNewIds.add(key);
                     }
                 }
 
@@ -222,8 +232,8 @@ export const useBoardStore = create<BoardState>()(
                 };
             }),
 
-            deleteItem: (itemId) => set((state) => ({
-                items: state.items.filter(item => item.id !== itemId)
+            deleteItem: (roomId, itemId) => set((state) => ({
+                items: state.items.filter((item) => item.id !== itemId || item.roomId !== roomId)
             })),
 
             clearItems: () => set({ items: [] }),
@@ -231,23 +241,28 @@ export const useBoardStore = create<BoardState>()(
             removeExpiredItems: () => set((state) => {
                 const now = Date.now();
                 return {
-                    items: state.items.filter(item => item.expiresAt > now)
+                    items: state.items.filter((item) => (
+                        item.expiresAt > now
+                        && typeof item.roomId === 'string'
+                        && /^[a-zA-Z0-9_-]{1,128}$/.test(item.roomId)
+                    ))
                 };
             }),
 
             startIncomingFile: (file) => set((state) => ({
-                incomingFiles: { ...state.incomingFiles, [file.id]: file }
+                incomingFiles: { ...state.incomingFiles, [`${file.roomId}:${file.id}`]: file }
             })),
 
-            updateIncomingFileProgress: (id, chunk, totalChunks) => set((state) => {
-                const file = state.incomingFiles[id];
+            updateIncomingFileProgress: (id, roomId, chunk, totalChunks) => set((state) => {
+                const key = `${roomId}:${id}`;
+                const file = state.incomingFiles[key];
                 if (!file) return state;
 
                 const newChunks = [...file.chunks, chunk];
                 return {
                     incomingFiles: {
                         ...state.incomingFiles,
-                        [id]: {
+                        [key]: {
                             ...file,
                             receivedBytes: file.receivedBytes + chunk.byteLength,
                             receivedChunks: file.receivedChunks + 1,
@@ -258,15 +273,15 @@ export const useBoardStore = create<BoardState>()(
                 };
             }),
 
-            completeIncomingFile: (id) => set((state) => {
+            completeIncomingFile: (id, roomId) => set((state) => {
                 const newIncoming = { ...state.incomingFiles };
-                delete newIncoming[id];
+                delete newIncoming[`${roomId}:${id}`];
                 return { incomingFiles: newIncoming };
             }),
 
-            attachFileToItem: (itemId, attachmentId, fileUrl) => set((state) => ({
+            attachFileToItem: (roomId, itemId, attachmentId, fileUrl) => set((state) => ({
                 items: state.items.map(item => {
-                    if (item.id === itemId && item.attachments) {
+                    if (item.id === itemId && item.roomId === roomId && item.attachments) {
                         return {
                             ...item,
                             attachments: item.attachments.map(att =>

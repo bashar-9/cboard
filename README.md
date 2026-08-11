@@ -36,6 +36,7 @@ Keep the Host laptop, terminal, and Host browser open.
 ## Security
 
 - Private links contain a random 72-bit key.
+- Every message and file is bound to one exact room; other Public or Private rooms cannot display or sync it.
 - Room access is signed before Pusher allows a connection.
 - One Host and one Receiver in local mode.
 - Incoming messages and file sizes are checked.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useBoardStore } from '@/store/useBoardStore';
+import { getRoomItems, useBoardStore } from '@/store/useBoardStore';
 import { useBoardNetworkInit } from '@/hooks/useBoardNetwork';
 import { Header } from '@/components/board/Header';
 import { ShareInput } from '@/components/board/ShareInput';
@@ -14,9 +14,7 @@ import { AnimatePresence } from 'framer-motion';
 export default function Home() {
   const { items, debugLogs, localRoomPrivacy, networkMode, roomSessions } = useBoardStore();
   const activeSession = roomSessions[localRoomPrivacy];
-  const activeItems = networkMode ? items.filter((item) => (
-    (item.scope === 'private' ? 'private' : 'public') === localRoomPrivacy
-  )) : [];
+  const activeItems = networkMode ? getRoomItems(items, activeSession.roomId) : [];
 
   useBoardNetworkInit();
 

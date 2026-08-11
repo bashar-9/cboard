@@ -11,6 +11,10 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const MAX_SIGNAL_BYTES = 64 * 1024;
 const privateCode = randomBytes(9).toString('base64url');
+const roomIds = {
+  public: `local-public-${randomBytes(12).toString('hex')}`,
+  private: `local-private-${randomBytes(12).toString('hex')}`,
+};
 const clients = new Map();
 
 function getLanAddress() {
@@ -118,7 +122,7 @@ webSocketServer.on('connection', (socket, request) => {
   socket.on('pong', () => { client.alive = true; });
   const baseUrl = `http://${getLanAddress()}:${port}`;
   send(socket, {
-    type: 'session', clientId: client.id, role,
+    type: 'session', clientId: client.id, role, roomId: roomIds[scope],
     shareUrl: role === 'host' ? scope === 'private' ? `${baseUrl}/r/${privateCode}` : baseUrl : undefined,
   });
   connectRoom(scope);

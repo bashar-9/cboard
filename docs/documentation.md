@@ -19,6 +19,8 @@ Text and files move directly between browsers through WebRTC.
 ## Security
 
 - Private room codes have 72 bits of randomness and act as bearer keys.
+- Every item, file transfer, sync, and delete is bound to the exact room ID—not only the Public or Private label.
+- Older saved items without an exact room ID are discarded.
 - The server converts codes into hidden room names and signs short-lived room access.
 - Pusher authorization is scoped to one room and one temporary user.
 - Incoming messages, IDs, file sizes, and chunks are validated.

@@ -12,6 +12,7 @@
 
 | Date | Milestone | Details |
 |------|-----------|---------|
+| 2026-08-11 | Exact Room Isolation | Bound messages, files, sync, and deletes to a unique room ID and discarded unsafe legacy items. |
 | 2026-08-11 | Dual Public + Private Rooms | Kept both rooms connected as tabs, replaced the PIN flow with a short secret link, and preserved reconnection across refresh. |
 | 2026-08-11 | Legacy Cloud Removal | Removed the unused database/authentication integration, packages, routes, state, and environment settings. |
 | 2026-08-10 | Automatic Public Room | Restored same-domain, same-network Public joining without a room link. Private keeps its link and PIN. |

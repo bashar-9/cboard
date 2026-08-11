@@ -4,15 +4,16 @@ import { useBoardStore } from '@/store/useBoardStore';
 import { Download } from 'lucide-react';
 
 export function IncomingFilesProgress() {
-    const { incomingFiles } = useBoardStore();
-    const incomingFilesArray = Object.values(incomingFiles);
+    const { incomingFiles, localRoomPrivacy, roomSessions } = useBoardStore();
+    const activeRoomId = roomSessions[localRoomPrivacy].roomId;
+    const incomingFilesArray = Object.values(incomingFiles).filter((file) => file.roomId === activeRoomId);
 
     if (incomingFilesArray.length === 0) return null;
 
     return (
         <div className="space-y-3 mb-6">
             {incomingFilesArray.map(file => (
-                <div key={file.id} className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800/50 flex flex-col gap-2 shadow-sm">
+                <div key={`${file.roomId}:${file.id}`} className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800/50 flex flex-col gap-2 shadow-sm">
                     <div className="flex justify-between items-center text-sm">
                         <span className="font-medium text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
                             <Download className="w-4 h-4 animate-bounce text-indigo-500" /> Receiving {file.fileName}
