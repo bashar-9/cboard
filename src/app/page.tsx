@@ -12,7 +12,8 @@ import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 
 export default function Home() {
-  const { items, myId, debugLogs, localRole, localRoomPrivacy, networkMode } = useBoardStore();
+  const { items, debugLogs, localRoomPrivacy, networkMode, roomSessions } = useBoardStore();
+  const activeSession = roomSessions[localRoomPrivacy];
   const activeItems = networkMode ? items.filter((item) => (
     (item.scope === 'private' ? 'private' : 'public') === localRoomPrivacy
   )) : [];
@@ -56,7 +57,7 @@ export default function Home() {
           <details>
             <summary className="cursor-pointer font-bold mb-1">Debug</summary>
             <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-xl max-h-48 overflow-y-auto transition-colors duration-200 border border-slate-200 dark:border-slate-800">
-              ID: {myId || 'None'} | Role: {localRole || 'None'}<br />
+              ID: {activeSession.myId || 'None'} | Role: {activeSession.role || 'None'}<br />
               {debugLogs?.map((log, i) => <div key={i}>{log}</div>)}
             </div>
           </details>

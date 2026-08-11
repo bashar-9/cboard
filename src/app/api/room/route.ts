@@ -1,47 +1,32 @@
 import crypto from 'node:crypto';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { createPrivateInvite, getClientIp, getRoomName, openPrivateInvite, readPrivateInvite, signRoomAccess, signUserId, verifyRoomAccess, verifyUserId } from '@/lib/server-utils';
+import { createNetworkToken, derivePrivateRoomName, getClientIp, getRoomName, readNetworkToken, signRoomAccess } from '@/lib/server-utils';
 
 export const dynamic = 'force-dynamic';
-const privateJoinAttempts = new Map<string, { count: number; resetAt: number }>();
 
-function setIdentityCookie(response: NextResponse, userId: string, isNewUser: boolean) {
-    if (!isNewUser) return;
-    response.cookies.set('user_id_token', signUserId(userId), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60 * 60 * 24 * 30,
-        path: '/',
-    });
-}
-
-function setPrivateRoomCookie(response: NextResponse, roomName: string, userId: string) {
-    response.cookies.set('room_access_token', signRoomAccess(roomName, userId), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60 * 60 * 12,
-        path: '/',
+function roomResponse(roomName: string, extra: Record<string, string> = {}) {
+    const userId = crypto.randomUUID().slice(0, 16);
+    return NextResponse.json({ roomName, userId, accessToken: signRoomAccess(roomName, userId), ...extra }, {
+        headers: { 'Cache-Control': 'no-store' },
     });
 }
 
 export async function GET(request: Request) {
     try {
-        const ip = getClientIp(request);
-        const roomName = getRoomName(ip);
+        const roomName = getRoomName(getClientIp(request));
         const userId = crypto.randomUUID().slice(0, 16);
-        const networkToken = createPrivateInvite(roomName, '000000', 10 * 60 * 1000);
-
-        const response = NextResponse.json({ roomName, userId, networkToken });
+        const response = NextResponse.json({
+            roomName,
+            userId,
+            accessToken: signRoomAccess(roomName, userId),
+            networkToken: createNetworkToken(roomName),
+        });
         response.headers.set('Cache-Control', 'no-store');
         const origin = request.headers.get('origin');
         if (origin === 'https://cboard.basharramadan.com' || origin === 'https://cboard-red.vercel.app') {
             response.headers.set('Access-Control-Allow-Origin', origin);
             response.headers.set('Vary', 'Origin');
         }
-        setIdentityCookie(response, userId, true);
         return response;
     } catch (error) {
         console.error('Room setup failed:', error instanceof Error ? error.message : 'Unknown error');
@@ -54,86 +39,36 @@ export async function POST(request: Request) {
         const origin = request.headers.get('origin');
         const host = request.headers.get('host');
         let originHost: string | null = null;
-        try {
-            originHost = origin ? new URL(origin).host : null;
-        } catch {
-            originHost = null;
-        }
+        try { originHost = origin ? new URL(origin).host : null; } catch { originHost = null; }
         if (!originHost || !host || originHost !== host) {
             return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
         }
-        const contentLength = Number(request.headers.get('content-length') || '0');
-        if (contentLength > 2_000) return NextResponse.json({ error: 'Request too large.' }, { status: 413 });
+        if (Number(request.headers.get('content-length') || '0') > 2_000) {
+            return NextResponse.json({ error: 'Request too large.' }, { status: 413 });
+        }
         const body: unknown = await request.json();
         if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
         const input = body as Record<string, unknown>;
-        const cookieStore = await cookies();
-        const identityToken = cookieStore.get('user_id_token')?.value;
-        let userId = identityToken ? verifyUserId(identityToken) : null;
-        const isNewUser = !userId;
-        if (!userId) userId = crypto.randomUUID().slice(0, 16);
-
-        if (input.action === 'create-private') {
-            const roomName = `presence-private-${crypto.randomBytes(16).toString('hex')}`;
-            const pin = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
-            const inviteToken = createPrivateInvite(roomName, pin);
-            const response = NextResponse.json({ roomName, userId, pin, inviteToken });
-            response.headers.set('Cache-Control', 'no-store');
-            setIdentityCookie(response, userId, isNewUser);
-            setPrivateRoomCookie(response, roomName, userId);
-            return response;
-        }
-
-        if (input.action === 'resume-private' && typeof input.inviteToken === 'string' && userId) {
-            const invite = readPrivateInvite(input.inviteToken);
-            const accessToken = cookieStore.get('room_access_token')?.value;
-            const access = accessToken ? verifyRoomAccess(accessToken) : null;
-            if (!invite || !access || access.roomName !== invite.roomName || access.userId !== userId) {
-                return NextResponse.json({ error: 'Private room access expired.' }, { status: 401 });
-            }
-            userId = crypto.randomUUID().slice(0, 16);
-            const response = NextResponse.json({ roomName: invite.roomName, userId, pin: invite.pin, inviteToken: input.inviteToken });
-            response.headers.set('Cache-Control', 'no-store');
-            setIdentityCookie(response, userId, true);
-            setPrivateRoomCookie(response, invite.roomName, userId);
-            return response;
-        }
 
         if (input.action === 'join-public-network' && typeof input.networkToken === 'string') {
-            const invite = readPrivateInvite(input.networkToken);
-            if (!invite || !/^presence-room-[a-f0-9]{12}$/.test(invite.roomName)) {
-                return NextResponse.json({ error: 'Could not verify this network.' }, { status: 401 });
-            }
-            userId = crypto.randomUUID().slice(0, 16);
-            const response = NextResponse.json({ roomName: invite.roomName, userId });
-            response.headers.set('Cache-Control', 'no-store');
-            setIdentityCookie(response, userId, true);
-            setPrivateRoomCookie(response, invite.roomName, userId);
-            return response;
+            const network = readNetworkToken(input.networkToken);
+            if (!network) return NextResponse.json({ error: 'Could not verify this network.' }, { status: 401 });
+            return roomResponse(network.roomName);
         }
 
-        if (input.action === 'join-private' && typeof input.inviteToken === 'string' && typeof input.pin === 'string') {
-            const address = getClientIp(request);
-            const now = Date.now();
-            const savedAttempt = privateJoinAttempts.get(address);
-            const attempts = savedAttempt && savedAttempt.resetAt > now
-                ? savedAttempt
-                : { count: 0, resetAt: now + 5 * 60 * 1000 };
-            if (attempts.count >= 5) {
-                return NextResponse.json({ error: 'Too many attempts. Try again in five minutes.' }, { status: 429 });
-            }
-            const roomName = openPrivateInvite(input.inviteToken, input.pin);
-            if (!roomName) {
-                attempts.count += 1;
-                privateJoinAttempts.set(address, attempts);
-                return NextResponse.json({ error: 'Incorrect or expired PIN.' }, { status: 403 });
-            }
-            privateJoinAttempts.delete(address);
-            const response = NextResponse.json({ roomName, userId });
-            response.headers.set('Cache-Control', 'no-store');
-            setIdentityCookie(response, userId, isNewUser);
-            setPrivateRoomCookie(response, roomName, userId);
-            return response;
+        if (input.action === 'create-private') {
+            const code = typeof input.code === 'string' && /^[A-Za-z0-9_-]{12}$/.test(input.code)
+                ? input.code
+                : crypto.randomBytes(9).toString('base64url');
+            const roomName = derivePrivateRoomName(code);
+            if (!roomName) return NextResponse.json({ error: 'Could not create the Private room.' }, { status: 400 });
+            return roomResponse(roomName, { code });
+        }
+
+        if (input.action === 'join-private' && typeof input.code === 'string') {
+            const roomName = derivePrivateRoomName(input.code);
+            if (!roomName) return NextResponse.json({ error: 'This private link is invalid.' }, { status: 400 });
+            return roomResponse(roomName, { code: input.code });
         }
 
         return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });

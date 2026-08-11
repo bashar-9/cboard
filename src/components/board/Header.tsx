@@ -9,9 +9,10 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/
 import { PublicHowItWorks } from '@/components/board/PublicHowItWorks';
 
 export function Header() {
-    const { connectionState, networkMode, localRoomPrivacy, localRole, pairingState } = useBoardStore();
-    const waiting = pairingState === 'hosting' || pairingState === 'needs-pin' || pairingState === 'joining' || pairingState === 'connecting';
-    const waitingLabel = pairingState === 'needs-pin' ? 'PIN needed' : networkMode === 'online' ? 'Room ready' : 'Waiting';
+    const { networkMode, localRoomPrivacy, roomSessions } = useBoardStore();
+    const session = roomSessions[localRoomPrivacy];
+    const waiting = session.connectionState === 'connecting';
+    const waitingLabel = 'Room ready';
 
     return (
         <motion.header
@@ -35,8 +36,8 @@ export function Header() {
                     <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                         {networkMode === 'online'
                             ? <Cloud className="w-3.5 h-3.5" />
-                            : localRole === 'host' ? <Laptop className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
-                        {networkMode === 'online' ? `Online ${localRoomPrivacy}` : localRole === 'host' ? 'Host' : 'Receiver'}
+                            : session.role === 'host' ? <Laptop className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                        {networkMode === 'online' ? `${localRoomPrivacy === 'public' ? 'Public' : 'Private'} room` : session.role === 'host' ? 'Host' : 'Receiver'}
                     </div>
                 )}
 
@@ -55,7 +56,7 @@ export function Header() {
                 <ThemeToggle />
 
                 <AnimatePresence mode="wait">
-                    {connectionState === 'connected' ? (
+                    {session.connectionState === 'connected' ? (
                         <motion.div key="connected" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-200/60 dark:border-emerald-500/20">
                             <ShieldCheck className="w-3.5 h-3.5" />
                             <span>Connected</span>

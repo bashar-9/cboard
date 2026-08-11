@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getNetworkMode, getOnlineWaitingState, sanitizeIncomingItem } from './useBoardNetwork';
+import { getNetworkMode, sanitizeIncomingItem } from './useBoardNetwork';
 
 const validItem = {
     id: 'item-1',
@@ -58,12 +58,4 @@ describe('network mode selection', () => {
         'uses Pusher signaling for %s',
         (hostname) => expect(getNetworkMode(hostname)).toBe('online'),
     );
-});
-
-describe('online waiting state', () => {
-    test('keeps a private room creator in the hosting state', () => {
-        expect(getOnlineWaitingState('host')).toBe('hosting');
-        expect(getOnlineWaitingState('receiver')).toBe('joining');
-        expect(getOnlineWaitingState(null)).toBe('joining');
-    });
 });

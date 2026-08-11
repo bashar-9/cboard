@@ -15,22 +15,17 @@ export const getPusherServer = () => {
     return pusherServerInstance;
 };
 
-// Client-side Pusher instance singleton
-let pusherClientInstance: PusherClient | null = null;
-
-export const getPusherClient = (): PusherClient => {
-    if (!pusherClientInstance) {
-        const key = process.env.NEXT_PUBLIC_PUSHER_APP_KEY;
-        const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-        if (!key || !cluster) throw new Error('Online sharing is not configured.');
-        pusherClientInstance = new PusherClient(
-            key,
-            {
-                cluster,
-                forceTLS: true,
-                channelAuthorization: { endpoint: '/api/pusher/auth', transport: 'ajax' },
-            }
-        );
-    }
-    return pusherClientInstance;
+export const createPusherClient = (accessToken: string): PusherClient => {
+    const key = process.env.NEXT_PUBLIC_PUSHER_APP_KEY;
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    if (!key || !cluster) throw new Error('Online sharing is not configured.');
+    return new PusherClient(key, {
+        cluster,
+        forceTLS: true,
+        channelAuthorization: {
+            endpoint: '/api/pusher/auth',
+            transport: 'ajax',
+            params: { access_token: accessToken },
+        },
+    });
 };

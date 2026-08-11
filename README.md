@@ -1,21 +1,17 @@
 # CBoard
 
-CBoard shares text and files directly between browsers in two ways:
+CBoard shares text and files directly between two browsers.
 
-- **Online:** Public connects automatically on the same internet connection; Private uses a link and PIN.
-- **Local:** one laptop hosts CBoard for a second device on the same router, even without internet.
+- **Public:** both devices open the same CBoard domain on the same network.
+- **Private:** the Host creates and shares a short secret link. No PIN is needed.
+- Public and Private stay connected as separate tabs, so switching does not close either room.
+- Local mode works on a router with no internet. One laptop runs CBoard and one device receives.
 
-## How it works
-
-- Online and local rooms can be **Public** or protected by a six-digit **PIN**.
-- Local rooms allow one Host and one Receiver.
-- Text and files move directly between the two browsers with WebRTC.
-- Refreshes and short connection drops reconnect automatically; Private room approval is remembered.
-- Items expire after 15 minutes. Files are limited to 50 MB each.
+Items expire after 15 minutes. Files are limited to 50 MB each.
 
 ## Vercel
 
-The online public room uses Pusher for connection setup. Keep these variables configured in Vercel:
+Online connection setup uses Pusher. Configure:
 
 - `PUSHER_APP_ID`
 - `NEXT_PUBLIC_PUSHER_APP_KEY`
@@ -23,9 +19,9 @@ The online public room uses Pusher for connection setup. Keep these variables co
 - `NEXT_PUBLIC_PUSHER_CLUSTER`
 - `PUSHER_COOKIE_SECRET` (recommended)
 
-## Start CBoard
+## Start locally
 
-Install [Node.js](https://nodejs.org/) 20 or newer, then run:
+Install Node.js 20 or newer, then run:
 
 ```bash
 npm install
@@ -33,33 +29,23 @@ npm run build
 npm start
 ```
 
-The terminal shows two addresses:
+The Host opens `http://127.0.0.1:3000`. The Receiver opens the local address shown in the terminal.
 
-- The Host opens `http://127.0.0.1:3000`.
-- The Receiver opens the displayed local address, such as `http://192.168.1.5:3000`.
-
-Keep the Host laptop, terminal, and local server running. The Host browser page must remain open for sharing.
-
-## Development
-
-```bash
-npm run dev
-npm run lint
-npm test
-npm run build
-```
+Keep the Host laptop, terminal, and Host browser open.
 
 ## Security
 
-- One Host and one Receiver only.
-- PIN approval with attempt limits.
-- Same-origin WebSocket checks.
-- Strict signaling and incoming file validation.
-- Browser security headers.
-- Files and text are not uploaded to Pusher.
-- Pusher carries connection setup messages only in online mode.
-- Dependency audit currently reports zero known vulnerabilities.
+- Private links contain a random 72-bit key.
+- Room access is signed before Pusher allows a connection.
+- One Host and one Receiver in local mode.
+- Incoming messages and file sizes are checked.
+- Browser security headers are enabled.
+- Text and files are sent browser-to-browser, not uploaded to Pusher.
 
-## Current limitation
+## Checks
 
-For offline local use, the Host laptop and local server must stay running. The online Vercel version does not have this requirement.
+```bash
+npm test
+npm run lint
+npm run build
+```

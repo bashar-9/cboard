@@ -14,7 +14,8 @@ const MAX_TEXT_LENGTH = 10_000;
 
 export function ShareInput() {
     const { sharePost } = useBoardNetwork();
-    const { connectionState } = useBoardStore();
+    const { localRoomPrivacy, roomSessions } = useBoardStore();
+    const connectionState = roomSessions[localRoomPrivacy].connectionState;
     const [inputText, setInputText] = useState('');
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isDragging, setIsDragging] = useState(false);

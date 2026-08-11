@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPrivateInvite, openPrivateInvite, readPrivateInvite, signRoomAccess, signUserId, verifyRoomAccess, verifyUserId } from './server-utils';
+import { createNetworkToken, derivePrivateRoomName, readNetworkToken, signRoomAccess, signUserId, verifyRoomAccess, verifyUserId } from './server-utils';
 
 const previousSecret = process.env.PUSHER_COOKIE_SECRET;
 
@@ -19,12 +19,12 @@ describe('signed online room access', () => {
         expect(verifyUserId(`${token}changed`)).toBeNull();
     });
 
-    it('requires the correct private-room PIN', () => {
-        const roomName = `presence-private-${'a'.repeat(32)}`;
-        const invite = createPrivateInvite(roomName, '483920');
-        expect(readPrivateInvite(invite)).toEqual({ roomName, pin: '483920' });
-        expect(openPrivateInvite(invite, '111111')).toBeNull();
-        expect(openPrivateInvite(invite, '483920')).toBe(roomName);
+    it('turns a short private link code into a stable hidden room', () => {
+        const code = 'Ab3dE6gH9jK_';
+        const roomName = derivePrivateRoomName(code);
+        expect(roomName).toMatch(/^presence-private-[a-f0-9]{32}$/);
+        expect(derivePrivateRoomName(code)).toBe(roomName);
+        expect(derivePrivateRoomName('too-short')).toBeNull();
     });
 
     it('binds private-room access to the room and user', () => {
@@ -34,8 +34,8 @@ describe('signed online room access', () => {
 
     it('signs a short-lived automatic Public network room', () => {
         const roomName = 'presence-room-123456789abc';
-        const token = createPrivateInvite(roomName, '000000', 60_000);
-        expect(readPrivateInvite(token)).toEqual({ roomName, pin: '000000' });
+        const token = createNetworkToken(roomName, 60_000);
+        expect(readNetworkToken(token)).toEqual({ roomName });
         expect(verifyRoomAccess(signRoomAccess(roomName, 'user-789'))).toEqual({ roomName, userId: 'user-789' });
     });
 });

@@ -12,6 +12,7 @@
 
 | Date | Milestone | Details |
 |------|-----------|---------|
+| 2026-08-11 | Dual Public + Private Rooms | Kept both rooms connected as tabs, replaced the PIN flow with a short secret link, and preserved reconnection across refresh. |
 | 2026-08-11 | Legacy Cloud Removal | Removed the unused database/authentication integration, packages, routes, state, and environment settings. |
 | 2026-08-10 | Automatic Public Room | Restored same-domain, same-network Public joining without a room link. Private keeps its link and PIN. |
 | 2026-08-10 | Exact Public Links | Added a Public room link so IPv4/IPv6 differences cannot leave devices waiting in separate rooms. |

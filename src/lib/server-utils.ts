@@ -103,26 +103,34 @@ export function verifyRoomAccess(token: string) {
     }
 }
 
-export function createPrivateInvite(roomName: string, pin: string, lifetimeMs = 12 * 60 * 60 * 1000) {
-    if (!ACCESS_ROOM_PATTERN.test(roomName) || !/^\d{6}$/.test(pin)) throw new Error('Invalid room details.');
+export function derivePrivateRoomName(code: string) {
+    if (!/^[A-Za-z0-9_-]{12}$/.test(code)) return null;
+    const secret = getSigningSecret();
+    if (!secret) throw new Error('Pusher signing secret is not configured.');
+    const hash = crypto.createHmac('sha256', secret).update(`private-room:${code}`).digest('hex').slice(0, 32);
+    return `presence-private-${hash}`;
+}
+
+export function createNetworkToken(roomName: string, lifetimeMs = 10 * 60 * 1000) {
+    if (!/^presence-room-[a-f0-9]{12}$/.test(roomName)) throw new Error('Invalid network room.');
     const secret = getSigningSecret();
     if (!secret) throw new Error('Pusher cookie signing secret is not configured.');
-    const key = crypto.createHash('sha256').update(`${secret}:private-invite`).digest();
+    const key = crypto.createHash('sha256').update(`${secret}:network-token`).digest();
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const payload = JSON.stringify({ roomName, pin, expiresAt: Date.now() + lifetimeMs });
+    const payload = JSON.stringify({ roomName, expiresAt: Date.now() + lifetimeMs });
     const encrypted = Buffer.concat([cipher.update(payload, 'utf8'), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64url');
 }
 
-export function readPrivateInvite(token: string) {
+export function readNetworkToken(token: string) {
     if (!/^[A-Za-z0-9_-]{40,1000}$/.test(token)) return null;
     try {
         const secret = getSigningSecret();
         if (!secret) return null;
         const packed = Buffer.from(token, 'base64url');
         if (packed.length < 29) return null;
-        const key = crypto.createHash('sha256').update(`${secret}:private-invite`).digest();
+        const key = crypto.createHash('sha256').update(`${secret}:network-token`).digest();
         const decipher = crypto.createDecipheriv('aes-256-gcm', key, packed.subarray(0, 12));
         decipher.setAuthTag(packed.subarray(12, 28));
         const decrypted = Buffer.concat([decipher.update(packed.subarray(28)), decipher.final()]).toString('utf8');
@@ -130,21 +138,11 @@ export function readPrivateInvite(token: string) {
         if (!value || typeof value !== 'object') return null;
         const data = value as Record<string, unknown>;
         if (typeof data.roomName !== 'string'
-            || !ACCESS_ROOM_PATTERN.test(data.roomName)
-            || typeof data.pin !== 'string'
-            || !/^\d{6}$/.test(data.pin)
+            || !/^presence-room-[a-f0-9]{12}$/.test(data.roomName)
             || typeof data.expiresAt !== 'number'
             || data.expiresAt <= Date.now()) return null;
-        return { roomName: data.roomName, pin: data.pin };
+        return { roomName: data.roomName };
     } catch {
         return null;
     }
-}
-
-export function openPrivateInvite(token: string, submittedPin: string) {
-    if (!/^\d{6}$/.test(submittedPin)) return null;
-    const invite = readPrivateInvite(token);
-    if (!invite) return null;
-    const matches = crypto.timingSafeEqual(Buffer.from(invite.pin), Buffer.from(submittedPin));
-    return matches ? invite.roomName : null;
 }

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { useBoardStore, type SharedAttachment, type SharedItem } from '@/store/useBoardStore';
+import { useBoardStore, type LocalRoomPrivacy, type RoomSessionState, type SharedAttachment, type SharedItem } from '@/store/useBoardStore';
 import { WebRTCManager, type SignalMessage } from '@/lib/webrtc';
-import { getPusherClient } from '@/lib/pusher';
+import { createPusherClient } from '@/lib/pusher';
+import type PusherClient from 'pusher-js';
 import type { Channel } from 'pusher-js';
 
 const MAX_TEXT_LENGTH = 10_000;
@@ -11,52 +12,42 @@ const MAX_FILES = 10;
 const MAX_ITEMS_PER_SYNC = 100;
 const CHUNK_SIZE = 64_000;
 const ID_LENGTH = 36;
-const ONLINE_PRIVATE_HOST_KEY = 'cboard-online-private-host';
+const ONLINE_PRIVATE_CODE_KEY = 'cboard-online-private-code';
+const ONLINE_PRIVATE_ROLE_KEY = 'cboard-online-private-role';
 const LOCAL_BROWSER_SESSION_KEY = 'cboard-local-browser-session';
+const LOCAL_PRIVATE_CODE_KEY = 'cboard-local-private-code';
 
-let webSocketInstance: WebSocket | null = null;
-let webrtcInstance: WebRTCManager | null = null;
-let webrtcOwnerId: string | null = null;
-let signalSender: ((signal: SignalMessage) => void) | null = null;
-let onlineChannelInstance: PresenceChannel | null = null;
-let onlinePrivateJoin: ((pin: string) => Promise<void>) | null = null;
-
-interface PresenceMember {
-    id: string;
-}
-
+interface PresenceMember { id: string }
 interface PresenceMembers {
     myID: string;
     count: number;
     each: (callback: (member: PresenceMember) => void) => void;
 }
-
-interface PresenceChannel extends Channel {
-    members?: PresenceMembers;
+interface PresenceChannel extends Channel { members?: PresenceMembers }
+interface RoomRuntime {
+    scope: LocalRoomPrivacy;
+    myId: string;
+    rtc: WebRTCManager;
+    peers: Set<string>;
+    pusher?: PusherClient;
+    channel?: PresenceChannel;
+    roomName?: string;
+    socket?: WebSocket;
 }
+
+const runtimes: Partial<Record<LocalRoomPrivacy, RoomRuntime>> = {};
+let initActive = false;
 
 export function getNetworkMode(hostname: string): 'local' | 'online' {
     const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
     const privateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
-    return normalized === 'localhost'
-        || normalized === '127.0.0.1'
-        || normalized === '::1'
-        || normalized.endsWith('.local')
-        || privateIpv4.test(normalized)
-        ? 'local'
-        : 'online';
-}
-
-export function getOnlineWaitingState(role: 'host' | 'receiver' | null) {
-    return role === 'host' ? 'hosting' as const : 'joining' as const;
+    return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1'
+        || normalized.endsWith('.local') || privateIpv4.test(normalized) ? 'local' : 'online';
 }
 
 function generateId(): string {
-    if (typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID().padEnd(ID_LENGTH, ' ').slice(0, ID_LENGTH);
-    }
-    const bytes = crypto.getRandomValues(new Uint8Array(18));
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return Array.from(crypto.getRandomValues(new Uint8Array(18)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,48 +60,31 @@ function isSafeId(value: unknown): value is string {
 
 function isSafeAttachment(value: unknown): value is SharedAttachment {
     if (!isRecord(value)) return false;
-    return isSafeId(value.id)
-        && typeof value.fileName === 'string'
-        && value.fileName.length > 0
-        && value.fileName.length <= 255
-        && typeof value.fileSize === 'number'
-        && Number.isFinite(value.fileSize)
-        && value.fileSize >= 0
-        && value.fileSize <= MAX_FILE_SIZE
-        && typeof value.mimeType === 'string'
+    return isSafeId(value.id) && typeof value.fileName === 'string' && value.fileName.length > 0
+        && value.fileName.length <= 255 && typeof value.fileSize === 'number' && Number.isFinite(value.fileSize)
+        && value.fileSize >= 0 && value.fileSize <= MAX_FILE_SIZE && typeof value.mimeType === 'string'
         && value.mimeType.length <= 100;
 }
 
 function isSafeItem(value: unknown): value is SharedItem {
     if (!isRecord(value)) return false;
-    const attachments = value.attachments;
-    return isSafeId(value.id)
-        && ['text', 'file', 'post'].includes(String(value.type))
-        && typeof value.content === 'string'
-        && value.content.length <= MAX_TEXT_LENGTH
-        && typeof value.senderId === 'string'
-        && value.senderId.length <= 64
-        && typeof value.timestamp === 'number'
-        && Number.isFinite(value.timestamp)
-        && typeof value.expiresAt === 'number'
-        && Number.isFinite(value.expiresAt)
-        && (attachments === undefined
-            || (Array.isArray(attachments) && attachments.length <= MAX_FILES && attachments.every(isSafeAttachment)));
+    return isSafeId(value.id) && ['text', 'file', 'post'].includes(String(value.type))
+        && typeof value.content === 'string' && value.content.length <= MAX_TEXT_LENGTH
+        && typeof value.senderId === 'string' && value.senderId.length <= 64
+        && typeof value.timestamp === 'number' && Number.isFinite(value.timestamp)
+        && typeof value.expiresAt === 'number' && Number.isFinite(value.expiresAt)
+        && (value.attachments === undefined || (Array.isArray(value.attachments)
+            && value.attachments.length <= MAX_FILES && value.attachments.every(isSafeAttachment)));
 }
 
-export function sanitizeIncomingItem(value: unknown, scope: 'public' | 'private' = 'public'): SharedItem | null {
+export function sanitizeIncomingItem(value: unknown, scope: LocalRoomPrivacy = 'public'): SharedItem | null {
     if (!isSafeItem(value)) return null;
     return {
         id: value.id,
         type: value.type,
         scope,
         content: value.content,
-        attachments: value.attachments?.map((attachment) => ({
-            id: attachment.id,
-            fileName: attachment.fileName,
-            fileSize: attachment.fileSize,
-            mimeType: attachment.mimeType,
-        })),
+        attachments: value.attachments?.map(({ id, fileName, fileSize, mimeType }) => ({ id, fileName, fileSize, mimeType })),
         senderId: value.senderId,
         timestamp: value.timestamp,
         expiresAt: value.expiresAt,
@@ -119,52 +93,41 @@ export function sanitizeIncomingItem(value: unknown, scope: 'public' | 'private'
 
 async function blobUrlToDataUri(blobUrl: string): Promise<string | null> {
     try {
-        const response = await fetch(blobUrl);
-        const blob = await response.blob();
+        const blob = await (await fetch(blobUrl)).blob();
         return await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
             reader.onerror = () => resolve(null);
             reader.readAsDataURL(blob);
         });
-    } catch {
-        return null;
-    }
+    } catch { return null; }
 }
 
-function sendSocketMessage(payload: Record<string, unknown>) {
-    if (webSocketInstance?.readyState === WebSocket.OPEN) {
-        webSocketInstance.send(JSON.stringify(payload));
-    }
+function getPrivateCodeFromPath() {
+    const match = window.location.pathname.match(/^\/r\/([A-Za-z0-9_-]{12})\/?$/);
+    return match?.[1] || null;
 }
 
-export function submitPairingPin(pin: string) {
-    if (!/^\d{6}$/.test(pin)) {
-        useBoardStore.getState().setLocalSession({ pairingError: 'Enter the six-digit PIN.' });
-        return;
-    }
-    useBoardStore.getState().setLocalSession({ pairingState: 'joining', pairingError: null });
-    if (useBoardStore.getState().networkMode === 'online' && onlinePrivateJoin) {
-        void onlinePrivateJoin(pin);
-        return;
-    }
-    sendSocketMessage({ type: 'join', pin });
+function privateShareUrl(code: string) {
+    return `${window.location.origin}/r/${code}`;
 }
 
-export function setLocalRoomPrivacy(privacy: 'public' | 'private') {
-    const store = useBoardStore.getState();
-    if (store.networkMode === 'online') {
-        if (privacy === 'public') localStorage.removeItem(ONLINE_PRIVATE_HOST_KEY);
-        window.location.assign(privacy === 'private' ? '/?create=private' : '/');
-        return;
-    }
-    store.setLocalSession({ localRoomPrivacy: privacy, pairingError: null });
-    sendSocketMessage({ type: 'set-room-privacy', privacy });
+function updateRoom(scope: LocalRoomPrivacy, session: Partial<RoomSessionState>) {
+    useBoardStore.getState().setRoomSession(scope, session);
 }
 
-async function sendStoredFilesToPeer(peerId: string, items: SharedItem[]) {
-    if (!webrtcInstance) return;
+function stopRuntime(scope: LocalRoomPrivacy) {
+    const runtime = runtimes[scope];
+    if (!runtime) return;
+    runtime.channel?.unbind_all();
+    if (runtime.pusher && runtime.roomName) runtime.pusher.unsubscribe(runtime.roomName);
+    runtime.pusher?.disconnect();
+    runtime.socket?.close();
+    runtime.rtc.cleanup();
+    delete runtimes[scope];
+}
 
+async function sendStoredFilesToPeer(runtime: RoomRuntime, peerId: string, items: SharedItem[]) {
     for (const item of items) {
         for (const attachment of item.attachments || []) {
             if (!attachment.fileData) continue;
@@ -174,562 +137,340 @@ async function sendStoredFilesToPeer(peerId: string, items: SharedItem[]) {
                 const buffer = await response.arrayBuffer();
                 if (buffer.byteLength > MAX_FILE_SIZE) continue;
                 const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
-
-                await webrtcInstance.sendTo(peerId, JSON.stringify({
-                    type: 'file-start',
-                    fileId: attachment.id,
-                    itemId: item.id,
-                    fileName: attachment.fileName,
-                    fileSize: attachment.fileSize,
-                    mimeType: attachment.mimeType,
-                    totalChunks,
+                await runtime.rtc.sendTo(peerId, JSON.stringify({
+                    type: 'file-start', fileId: attachment.id, itemId: item.id,
+                    fileName: attachment.fileName, fileSize: attachment.fileSize,
+                    mimeType: attachment.mimeType, totalChunks,
                 }));
-
                 const idBytes = new TextEncoder().encode(attachment.id.padEnd(ID_LENGTH, ' ').slice(0, ID_LENGTH));
                 for (let offset = 0; offset < buffer.byteLength; offset += CHUNK_SIZE) {
                     const chunk = new Uint8Array(buffer.slice(offset, offset + CHUNK_SIZE));
                     const message = new Uint8Array(ID_LENGTH + chunk.length);
                     message.set(idBytes, 0);
                     message.set(chunk, ID_LENGTH);
-                    await webrtcInstance.sendTo(peerId, message.buffer);
+                    await runtime.rtc.sendTo(peerId, message.buffer);
                 }
-
-                await webrtcInstance.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: attachment.id }));
-            } catch {
-                useBoardStore.getState().addDebugLog(`Could not restore ${attachment.fileName}.`);
-            }
+                await runtime.rtc.sendTo(peerId, JSON.stringify({ type: 'file-complete', fileId: attachment.id }));
+            } catch { useBoardStore.getState().addDebugLog(`Could not restore ${attachment.fileName}.`); }
         }
     }
 }
 
-function setupPeer(myId: string, peerId: string, polite: boolean) {
+function handleIncomingData(scope: LocalRoomPrivacy, data: unknown) {
     const store = useBoardStore.getState();
-    if (!webrtcInstance || webrtcOwnerId !== myId) {
-        webrtcInstance?.cleanup();
-        const rtc = new WebRTCManager(myId, store.networkMode === 'online');
-        webrtcInstance = rtc;
-        webrtcOwnerId = myId;
-
-        rtc.onSignal = (signal) => signalSender?.(signal);
-
-        rtc.onConnect = (connectedPeerId) => {
-            const currentStore = useBoardStore.getState();
-            currentStore.addPeer(connectedPeerId);
-            currentStore.setConnectionState('connected');
-            currentStore.setLocalSession({ pairingState: 'paired', pairingError: null });
-            currentStore.addDebugLog(`Secure ${currentStore.networkMode} connection ready.`);
-        };
-
-        rtc.onDisconnect = (disconnectedPeerId) => {
-            const currentStore = useBoardStore.getState();
-            currentStore.removePeer(disconnectedPeerId);
-            if (useBoardStore.getState().peers.length > 0) return;
-            currentStore.setConnectionState('connecting');
-            currentStore.setLocalSession({
-                pairingState: currentStore.networkMode === 'online'
-                    ? getOnlineWaitingState(currentStore.localRole)
-                    : currentStore.localRole === 'host' ? 'hosting' : 'joining',
-                pairingError: currentStore.networkMode === 'local' && currentStore.localRole === 'receiver'
-                    ? 'Host disconnected. Waiting to reconnect.'
-                    : null,
-            });
-        };
-
-        rtc.onChannelOpen = async (connectedPeerId) => {
-            const activeScope = useBoardStore.getState().localRoomPrivacy === 'private' ? 'private' : 'public';
-            const currentItems = useBoardStore.getState().items
-                .filter((item) => (item.scope === 'private' ? 'private' : 'public') === activeScope)
-                .slice(0, MAX_ITEMS_PER_SYNC);
-            if (currentItems.length === 0) return;
-
-            const safeMetadata = currentItems.map((item) => ({
-                ...item,
-                fileData: undefined,
-                attachments: item.attachments?.map((attachment) => ({ ...attachment, fileData: undefined })),
-            }));
-            await rtc.sendTo(connectedPeerId, JSON.stringify({ type: 'sync', items: safeMetadata }));
-            await sendStoredFilesToPeer(connectedPeerId, currentItems);
-        };
-
-        rtc.onData = (_connectedPeerId, data) => handleIncomingData(data);
-    }
-
-    webrtcInstance.createPeer(peerId, polite);
-}
-
-function handleIncomingData(data: unknown) {
-    const store = useBoardStore.getState();
-    const activeScope = store.localRoomPrivacy === 'private' ? 'private' : 'public';
-
     try {
         if (typeof data === 'string') {
             if (data.length > 1_000_000) return;
             const payload: unknown = JSON.parse(data);
             if (!isRecord(payload) || typeof payload.type !== 'string') return;
-
             if (payload.type === 'text' || payload.type === 'post') {
-                const safeItem = sanitizeIncomingItem(payload.item, activeScope);
-                if (safeItem) store.addItem(safeItem);
+                const item = sanitizeIncomingItem(payload.item, scope);
+                if (item) store.addItem(item);
                 return;
             }
-
             if (payload.type === 'sync' && Array.isArray(payload.items)) {
-                const safeItems = payload.items
-                    .slice(0, MAX_ITEMS_PER_SYNC)
-                    .map((item) => sanitizeIncomingItem(item, activeScope))
+                const items = payload.items.slice(0, MAX_ITEMS_PER_SYNC)
+                    .map((item) => sanitizeIncomingItem(item, scope))
                     .filter((item): item is SharedItem => item !== null);
-                store.addItems(safeItems);
+                store.addItems(items);
                 return;
             }
-
             if (payload.type === 'delete' && isSafeId(payload.itemId)) {
-                store.deleteItem(payload.itemId);
+                const target = store.items.find((item) => item.id === payload.itemId);
+                if (target && (target.scope || 'public') === scope) store.deleteItem(payload.itemId);
                 return;
             }
-
             if (payload.type === 'file-start') {
                 const { fileId, itemId, fileName, fileSize, mimeType, totalChunks } = payload;
-                if (!isSafeId(fileId)
-                    || !isSafeId(itemId)
-                    || typeof fileName !== 'string'
-                    || fileName.length === 0
-                    || fileName.length > 255
-                    || typeof fileSize !== 'number'
-                    || fileSize < 0
-                    || fileSize > MAX_FILE_SIZE
-                    || typeof mimeType !== 'string'
-                    || mimeType.length > 100
-                    || typeof totalChunks !== 'number'
-                    || !Number.isInteger(totalChunks)
-                    || totalChunks < 0
+                if (!isSafeId(fileId) || !isSafeId(itemId) || typeof fileName !== 'string' || !fileName.length
+                    || fileName.length > 255 || typeof fileSize !== 'number' || fileSize < 0 || fileSize > MAX_FILE_SIZE
+                    || typeof mimeType !== 'string' || mimeType.length > 100 || typeof totalChunks !== 'number'
+                    || !Number.isInteger(totalChunks) || totalChunks < 0
                     || totalChunks > Math.ceil(MAX_FILE_SIZE / CHUNK_SIZE)) return;
-
-                store.startIncomingFile({
-                    id: fileId,
-                    itemId,
-                    fileName,
-                    fileSize,
-                    mimeType,
-                    receivedBytes: 0,
-                    totalChunks,
-                    receivedChunks: 0,
-                    chunks: [],
-                });
+                store.startIncomingFile({ id: fileId, itemId, fileName, fileSize, mimeType, receivedBytes: 0,
+                    totalChunks, receivedChunks: 0, chunks: [] });
                 return;
             }
-
             if (payload.type === 'file-complete' && isSafeId(payload.fileId)) {
                 const incoming = store.incomingFiles[payload.fileId];
                 if (!incoming) return;
-
                 if (incoming.receivedBytes !== incoming.fileSize || incoming.receivedChunks !== incoming.totalChunks) {
                     store.completeIncomingFile(payload.fileId);
-                    store.addDebugLog(`Rejected incomplete file: ${incoming.fileName}`);
                     return;
                 }
-
                 const fullBuffer = new Uint8Array(incoming.receivedBytes);
                 let offset = 0;
                 for (const chunk of incoming.chunks) {
                     fullBuffer.set(new Uint8Array(chunk), offset);
                     offset += chunk.byteLength;
                 }
-                const fileUrl = URL.createObjectURL(new Blob([fullBuffer], { type: incoming.mimeType }));
-                store.attachFileToItem(incoming.itemId || incoming.id, incoming.id, fileUrl);
+                store.attachFileToItem(incoming.itemId || incoming.id, incoming.id,
+                    URL.createObjectURL(new Blob([fullBuffer], { type: incoming.mimeType })));
                 store.completeIncomingFile(payload.fileId);
             }
             return;
         }
-
         if (data instanceof ArrayBuffer) {
             if (data.byteLength <= ID_LENGTH || data.byteLength > ID_LENGTH + CHUNK_SIZE) return;
             const fileId = new TextDecoder().decode(new Uint8Array(data.slice(0, ID_LENGTH))).trim();
             const incoming = store.incomingFiles[fileId];
             const chunk = data.slice(ID_LENGTH);
-            if (!incoming
-                || incoming.receivedChunks >= incoming.totalChunks
+            if (!incoming || incoming.receivedChunks >= incoming.totalChunks
                 || incoming.receivedBytes + chunk.byteLength > incoming.fileSize) return;
             store.updateIncomingFileProgress(fileId, chunk, incoming.totalChunks);
         }
-    } catch {
-        store.addDebugLog('Rejected an invalid incoming message.');
+    } catch { store.addDebugLog('Rejected an invalid incoming message.'); }
+}
+
+function createRuntime(scope: LocalRoomPrivacy, myId: string, online: boolean, sendSignal: (signal: SignalMessage) => void) {
+    stopRuntime(scope);
+    const rtc = new WebRTCManager(myId, online);
+    const runtime: RoomRuntime = { scope, myId, rtc, peers: new Set() };
+    runtimes[scope] = runtime;
+    rtc.onSignal = sendSignal;
+    rtc.onConnect = (peerId) => {
+        runtime.peers.add(peerId);
+        useBoardStore.getState().addRoomPeer(scope, peerId);
+        updateRoom(scope, { connectionState: 'connected', pairingState: 'paired', error: null });
+    };
+    rtc.onDisconnect = (peerId) => {
+        runtime.peers.delete(peerId);
+        useBoardStore.getState().removeRoomPeer(scope, peerId);
+        if (!runtime.peers.size) updateRoom(scope, { connectionState: 'connecting', pairingState: 'joining' });
+    };
+    rtc.onChannelOpen = async (peerId) => {
+        const items = useBoardStore.getState().items
+            .filter((item) => (item.scope || 'public') === scope).slice(0, MAX_ITEMS_PER_SYNC);
+        if (!items.length) return;
+        await rtc.sendTo(peerId, JSON.stringify({ type: 'sync', items: items.map((item) => ({
+            ...item, fileData: undefined,
+            attachments: item.attachments?.map((attachment) => ({ ...attachment, fileData: undefined })),
+        })) }));
+        await sendStoredFilesToPeer(runtime, peerId, items);
+    };
+    rtc.onData = (_peerId, data) => handleIncomingData(scope, data);
+    return runtime;
+}
+
+function connectPeer(runtime: RoomRuntime, peerId: string, polite: boolean) {
+    if (peerId !== runtime.myId) runtime.rtc.createPeer(peerId, polite);
+}
+
+async function fetchPublicSession() {
+    let session: unknown = null;
+    if (window.location.hostname === 'cboard.basharramadan.com') {
+        try {
+            const discoveryResponse = await fetch('https://cboard-red.vercel.app/api/room', { cache: 'no-store', credentials: 'omit' });
+            const discovery: unknown = await discoveryResponse.json();
+            if (!discoveryResponse.ok || !isRecord(discovery) || typeof discovery.networkToken !== 'string') throw new Error();
+            const response = await fetch('/api/room', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'join-public-network', networkToken: discovery.networkToken }),
+            });
+            session = await response.json();
+            if (!response.ok) throw new Error();
+        } catch { useBoardStore.getState().addDebugLog('Using the direct network address.'); }
+    }
+    if (!session) {
+        const response = await fetch('/api/room', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Could not open the Public room.');
+        session = await response.json();
+    }
+    return session;
+}
+
+function connectOnlineSession(scope: LocalRoomPrivacy, session: unknown, role: 'host' | 'receiver' | null, shareUrl: string | null) {
+    if (!initActive || !isRecord(session) || !isSafeId(session.userId) || typeof session.roomName !== 'string'
+        || typeof session.accessToken !== 'string') throw new Error('The room response was invalid.');
+    const runtime = createRuntime(scope, session.userId, true, (signal) => channel.trigger('client-webrtc-signal', signal));
+    runtime.roomName = session.roomName;
+    runtime.pusher = createPusherClient(session.accessToken);
+    const channel = runtime.pusher.subscribe(session.roomName) as PresenceChannel;
+    runtime.channel = channel;
+    updateRoom(scope, { myId: session.userId, role, shareUrl, connectionState: 'connecting', pairingState: 'joining', error: null });
+
+    channel.bind('pusher:subscription_succeeded', (members: PresenceMembers) => {
+        if (!initActive || !isSafeId(members.myID)) return;
+        runtime.myId = members.myID;
+        updateRoom(scope, { myId: members.myID, pairingState: 'joining', error: null });
+        members.each((member) => {
+            if (isSafeId(member.id) && member.id !== members.myID) connectPeer(runtime, member.id, members.myID > member.id);
+        });
+    });
+    channel.bind('pusher:member_added', (member: PresenceMember) => {
+        const myId = channel.members?.myID || runtime.myId;
+        if (isSafeId(member.id) && member.id !== myId) connectPeer(runtime, member.id, myId > member.id);
+    });
+    channel.bind('pusher:member_removed', (member: PresenceMember) => {
+        if (!isSafeId(member.id)) return;
+        runtime.rtc.removePeer(member.id);
+        runtime.peers.delete(member.id);
+        useBoardStore.getState().removeRoomPeer(scope, member.id);
+        if (!runtime.peers.size) updateRoom(scope, { connectionState: 'connecting', pairingState: 'joining' });
+    });
+    channel.bind('client-webrtc-signal', (incoming: unknown) => {
+        if (!isRecord(incoming) || !isSafeId(incoming.to) || !isSafeId(incoming.from)
+            || !['offer', 'answer', 'candidate'].includes(String(incoming.type))) return;
+        const myId = channel.members?.myID || runtime.myId;
+        if (incoming.to !== myId) return;
+        if (incoming.type === 'offer') connectPeer(runtime, incoming.from, myId > incoming.from);
+        runtime.rtc.handleSignal({ to: myId, from: incoming.from,
+            type: incoming.type as SignalMessage['type'], data: incoming.data });
+    });
+    channel.bind('pusher:subscription_error', () => {
+        updateRoom(scope, { connectionState: 'disconnected', pairingState: 'error', error: `Could not join the ${scope} room.` });
+    });
+}
+
+async function joinOnlinePrivate(code: string, role: 'host' | 'receiver') {
+    const response = await fetch('/api/room', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: role === 'host' ? 'create-private' : 'join-private', code }),
+    });
+    const session: unknown = await response.json();
+    if (!response.ok) throw new Error(isRecord(session) && typeof session.error === 'string' ? session.error : 'Could not open the Private room.');
+    if (!isRecord(session) || typeof session.code !== 'string') throw new Error('The private link was invalid.');
+    connectOnlineSession('private', session, role, privateShareUrl(session.code));
+    return session.code;
+}
+
+function startOnlineConnections() {
+    updateRoom('public', { connectionState: 'connecting', pairingState: 'joining', error: null });
+    void fetchPublicSession().then((session) => connectOnlineSession('public', session, null, null)).catch((error) => {
+        updateRoom('public', { connectionState: 'disconnected', pairingState: 'error', error: error instanceof Error ? error.message : 'Public room unavailable.' });
+    });
+    const pathCode = getPrivateCodeFromPath();
+    const savedCode = localStorage.getItem(ONLINE_PRIVATE_CODE_KEY);
+    const savedRole = localStorage.getItem(ONLINE_PRIVATE_ROLE_KEY);
+    const code = pathCode || savedCode;
+    if (code && /^[A-Za-z0-9_-]{12}$/.test(code)) {
+        const role = savedCode === code && (savedRole === 'host' || savedRole === 'receiver') ? savedRole : 'receiver';
+        localStorage.setItem(ONLINE_PRIVATE_CODE_KEY, code);
+        localStorage.setItem(ONLINE_PRIVATE_ROLE_KEY, role);
+        if (pathCode) useBoardStore.getState().setActiveRoom('private');
+        updateRoom('private', { role, shareUrl: privateShareUrl(code), connectionState: 'connecting', pairingState: 'joining', error: null });
+        void joinOnlinePrivate(code, role).catch((error) => {
+            updateRoom('private', { connectionState: 'disconnected', pairingState: 'error', error: error instanceof Error ? error.message : 'Private room unavailable.' });
+        });
     }
 }
 
-function startLocalConnection(isActive: () => boolean) {
-    const store = useBoardStore.getState();
-    store.setLocalSession({ networkMode: 'local', pairingState: 'connecting', pairingError: null });
-    signalSender = (signal) => sendSocketMessage({
-        type: 'signal',
-        to: signal.to,
-        signal: { type: signal.type, data: signal.data },
-    });
-
+function startLocalScope(scope: LocalRoomPrivacy, browserSessionId: string, code: string | null) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let browserSessionId = localStorage.getItem(LOCAL_BROWSER_SESSION_KEY);
-    if (!browserSessionId || !/^[a-f0-9-]{32,36}$/.test(browserSessionId)) {
-        browserSessionId = generateId();
-        localStorage.setItem(LOCAL_BROWSER_SESSION_KEY, browserSessionId);
-    }
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?session=${encodeURIComponent(browserSessionId)}`);
-    webSocketInstance = socket;
-
+    const query = new URLSearchParams({ session: browserSessionId, room: scope });
+    if (code) query.set('code', code);
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?${query}`);
+    let runtime: RoomRuntime | null = null;
     socket.onmessage = (event) => {
-        if (!isActive() || typeof event.data !== 'string' || event.data.length > 100_000) return;
+        if (!initActive || typeof event.data !== 'string' || event.data.length > 100_000) return;
         let message: unknown;
-        try {
-            message = JSON.parse(event.data);
-        } catch {
-            return;
-        }
+        try { message = JSON.parse(event.data); } catch { return; }
         if (!isRecord(message) || typeof message.type !== 'string') return;
-
-        if (message.type === 'session' && (message.role === 'host' || message.role === 'receiver') && isSafeId(message.clientId)) {
-            store.setMyId(message.clientId);
-            const roomPrivacy = message.roomPrivacy === 'private' ? 'private' : 'public';
-            if (message.role === 'host') {
-                store.setLocalSession({
-                    networkMode: 'local',
-                    localRole: 'host',
-                    localRoomPrivacy: roomPrivacy,
-                    pairingCode: typeof message.pairingPin === 'string' ? message.pairingPin : null,
-                    shareUrl: typeof message.shareUrl === 'string' ? message.shareUrl : null,
-                    pairingState: 'hosting',
-                    pairingError: null,
-                });
-            } else {
-                store.setLocalSession({
-                    networkMode: 'local',
-                    localRole: 'receiver',
-                    localRoomPrivacy: roomPrivacy,
-                    pairingState: message.requiresPin === true ? 'needs-pin' : 'joining',
-                    pairingError: null,
-                });
-            }
-            return;
-        }
-
-        if (message.type === 'room-privacy' && (message.privacy === 'public' || message.privacy === 'private')) {
-            store.setLocalSession({
-                localRoomPrivacy: message.privacy,
-                pairingState: store.localRole === 'receiver'
-                    ? message.privacy === 'private' ? 'needs-pin' : 'joining'
-                    : 'hosting',
-                pairingError: null,
+        if (message.type === 'session' && isSafeId(message.clientId) && (message.role === 'host' || message.role === 'receiver')) {
+            runtime = createRuntime(scope, message.clientId, false, (signal) => {
+                if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({
+                    type: 'signal', to: signal.to, signal: { type: signal.type, data: signal.data },
+                }));
             });
+            runtime.socket = socket;
+            const shareUrl = typeof message.shareUrl === 'string' ? message.shareUrl : code ? privateShareUrl(code) : null;
+            updateRoom(scope, { myId: message.clientId, role: message.role, shareUrl,
+                connectionState: 'connecting', pairingState: 'joining', error: null });
             return;
         }
-
-        if (message.type === 'join-rejected') {
-            const attemptsLeft = typeof message.attemptsLeft === 'number' ? message.attemptsLeft : 0;
-            store.setLocalSession({ pairingState: 'needs-pin', pairingError: `Incorrect PIN. ${attemptsLeft} attempts left.` });
+        if (message.type === 'peer-ready' && runtime && isSafeId(message.peerId) && typeof message.polite === 'boolean') {
+            connectPeer(runtime, message.peerId, message.polite);
             return;
         }
-
-        if (message.type === 'join-accepted') {
-            store.setLocalSession({ pairingState: 'joining', pairingError: null });
+        if (message.type === 'signal' && runtime && isSafeId(message.from) && isRecord(message.signal)
+            && ['offer', 'answer', 'candidate'].includes(String(message.signal.type))) {
+            runtime.rtc.handleSignal({ to: runtime.myId, from: message.from,
+                type: message.signal.type as SignalMessage['type'], data: message.signal.data });
             return;
         }
-
-        if (message.type === 'peer-ready' && isSafeId(message.peerId) && typeof message.polite === 'boolean') {
-            const myId = useBoardStore.getState().myId;
-            if (myId) setupPeer(myId, message.peerId, message.polite);
+        if (message.type === 'peer-left' && runtime && isSafeId(message.peerId)) {
+            runtime.rtc.removePeer(message.peerId);
+            runtime.peers.delete(message.peerId);
+            useBoardStore.getState().removeRoomPeer(scope, message.peerId);
+            updateRoom(scope, { connectionState: 'connecting', pairingState: 'joining' });
             return;
         }
-
-        if (message.type === 'signal' && isSafeId(message.from) && isRecord(message.signal)) {
-            const signalType = message.signal.type;
-            if (!['offer', 'answer', 'candidate'].includes(String(signalType))) return;
-            webrtcInstance?.handleSignal({
-                to: useBoardStore.getState().myId || '',
-                from: message.from,
-                type: signalType as SignalMessage['type'],
-                data: message.signal.data,
-            });
-            return;
-        }
-
-        if (message.type === 'peer-left' && isSafeId(message.peerId)) {
-            webrtcInstance?.removePeer(message.peerId);
-            store.removePeer(message.peerId);
-            store.setConnectionState('connecting');
-            store.setLocalSession({
-                pairingState: store.localRole === 'host' ? 'hosting' : 'joining',
-                pairingError: store.localRole === 'receiver' ? 'Host disconnected. Waiting to reconnect.' : null,
-            });
-            return;
-        }
-
         if (message.type === 'error') {
-            const code = typeof message.code === 'string' ? message.code : 'error';
-            const errorMessage = typeof message.message === 'string' ? message.message : 'Could not connect.';
-            store.setConnectionState('disconnected');
-            store.setLocalSession({
-                pairingState: code === 'room_full' ? 'room-full' : 'error',
-                pairingError: errorMessage,
-            });
+            updateRoom(scope, { connectionState: 'disconnected', pairingState: 'error',
+                error: typeof message.message === 'string' ? message.message : `${scope} room unavailable.` });
         }
     };
-
-    socket.onerror = () => {
-        store.setConnectionState('disconnected');
-        store.setLocalSession({ pairingState: 'error', pairingError: 'Cannot reach the local CBoard server.' });
-    };
-
+    socket.onerror = () => updateRoom(scope, { connectionState: 'disconnected', pairingState: 'error', error: 'Cannot reach the local CBoard host.' });
     socket.onclose = () => {
-        if (!isActive()) return;
-        store.setConnectionState('disconnected');
-        store.setLocalSession({ pairingState: 'error', pairingError: 'Local server disconnected. Refresh to retry.' });
+        if (initActive && runtimes[scope]?.socket === socket) updateRoom(scope, { connectionState: 'disconnected', pairingState: 'error', error: 'Local host disconnected.' });
     };
-
-    return () => socket.close();
 }
 
-function startOnlineConnection(isActive: () => boolean) {
+function startLocalConnections() {
+    let sessionId = localStorage.getItem(LOCAL_BROWSER_SESSION_KEY);
+    if (!sessionId || !/^[a-f0-9-]{32,36}$/.test(sessionId)) {
+        sessionId = generateId();
+        localStorage.setItem(LOCAL_BROWSER_SESSION_KEY, sessionId);
+    }
+    const pathCode = getPrivateCodeFromPath();
+    if (pathCode) localStorage.setItem(LOCAL_PRIVATE_CODE_KEY, pathCode);
+    const code = pathCode || localStorage.getItem(LOCAL_PRIVATE_CODE_KEY);
+    if (code) useBoardStore.getState().setActiveRoom('private');
+    startLocalScope('public', sessionId, null);
+    startLocalScope('private', sessionId, code);
+}
+
+export function setLocalRoomPrivacy(scope: LocalRoomPrivacy) {
     const store = useBoardStore.getState();
-    const searchParams = new URLSearchParams(window.location.search);
-    const inviteToken = searchParams.get('invite');
-    const createPrivate = searchParams.get('create') === 'private';
-    store.setLocalSession({
-        networkMode: 'online',
-        localRoomPrivacy: inviteToken || createPrivate ? 'private' : 'public',
-        localRole: inviteToken ? 'receiver' : createPrivate ? 'host' : null,
-        pairingState: inviteToken ? 'needs-pin' : createPrivate ? 'hosting' : 'joining',
-        pairingError: null,
-    });
-    let roomName: string | null = null;
-    let pusher: ReturnType<typeof getPusherClient> | null = null;
+    store.setActiveRoom(scope);
+    const privateUrl = store.roomSessions.private.shareUrl;
+    const nextPath = scope === 'private' && privateUrl ? new URL(privateUrl).pathname : '/';
+    window.history.replaceState({}, '', nextPath);
+}
 
-    const connectSession = (session: unknown) => {
-        if (!isActive() || !isRecord(session) || !isSafeId(session.userId) || typeof session.roomName !== 'string') {
-            throw new Error('The room response was invalid.');
-        }
+export async function createPrivateRoom() {
+    const store = useBoardStore.getState();
+    store.setActiveRoom('private');
+    updateRoom('private', { connectionState: 'connecting', pairingState: 'connecting', role: 'host', error: null });
+    if (store.networkMode === 'local') {
+        const existing = store.roomSessions.private;
+        if (existing.shareUrl) window.history.replaceState({}, '', new URL(existing.shareUrl).pathname);
+        return;
+    }
+    try {
+        const code = await joinOnlinePrivate('', 'host');
+        localStorage.setItem(ONLINE_PRIVATE_CODE_KEY, code);
+        localStorage.setItem(ONLINE_PRIVATE_ROLE_KEY, 'host');
+        window.history.replaceState({}, '', `/r/${code}`);
+    } catch (error) {
+        updateRoom('private', { connectionState: 'disconnected', pairingState: 'error', error: error instanceof Error ? error.message : 'Could not create the Private room.' });
+    }
+}
 
-        roomName = session.roomName;
-        store.setRoomCode(roomName);
-        store.setMyId(session.userId);
-        try {
-            pusher = getPusherClient();
-            const channel = pusher.subscribe(roomName) as PresenceChannel;
-            onlineChannelInstance = channel;
-            signalSender = (signal) => {
-                channel.trigger('client-webrtc-signal', signal);
-            };
-
-            channel.bind('pusher:subscription_succeeded', (members: PresenceMembers) => {
-                if (!isActive() || !isSafeId(members.myID)) return;
-                store.setMyId(members.myID);
-                const currentSession = useBoardStore.getState();
-                store.setLocalSession({
-                    pairingState: getOnlineWaitingState(currentSession.localRole),
-                    pairingError: null,
-                });
-                members.each((member) => {
-                    if (member.id !== members.myID && isSafeId(member.id)) {
-                        setupPeer(members.myID, member.id, members.myID > member.id);
-                    }
-                });
-            });
-
-            channel.bind('pusher:member_added', (member: PresenceMember) => {
-                const myId = channel.members?.myID || useBoardStore.getState().myId;
-                if (myId && isSafeId(member.id) && member.id !== myId) {
-                    setupPeer(myId, member.id, myId > member.id);
-                }
-            });
-
-            channel.bind('pusher:member_removed', (member: PresenceMember) => {
-                if (!isSafeId(member.id)) return;
-                webrtcInstance?.removePeer(member.id);
-                store.removePeer(member.id);
-                if (useBoardStore.getState().peers.length === 0) {
-                    const currentSession = useBoardStore.getState();
-                    store.setConnectionState('connecting');
-                    store.setLocalSession({ pairingState: getOnlineWaitingState(currentSession.localRole) });
-                }
-            });
-
-            channel.bind('client-webrtc-signal', (incoming: unknown) => {
-                if (!isRecord(incoming)
-                    || !isSafeId(incoming.to)
-                    || !isSafeId(incoming.from)
-                    || !['offer', 'answer', 'candidate'].includes(String(incoming.type))) return;
-                const myId = channel.members?.myID || useBoardStore.getState().myId;
-                if (!myId || incoming.to !== myId) return;
-                if (!webrtcInstance && incoming.type === 'offer') {
-                    setupPeer(myId, incoming.from, myId > incoming.from);
-                }
-                webrtcInstance?.handleSignal({
-                    to: myId,
-                    from: incoming.from,
-                    type: incoming.type as SignalMessage['type'],
-                    data: incoming.data,
-                });
-            });
-
-            channel.bind('pusher:subscription_error', () => {
-                store.setConnectionState('disconnected');
-                store.setLocalSession({ pairingState: 'error', pairingError: 'Could not join this online room.' });
-            });
-        } catch (error) {
-            throw error;
-        }
-    };
-
-    const showError = (error: unknown, fallback: string) => {
-        store.setConnectionState('disconnected');
-        store.setLocalSession({
-            pairingState: inviteToken ? 'needs-pin' : 'error',
-            pairingError: error instanceof Error ? error.message : fallback,
-        });
-    };
-
-    const resumePrivateSession = async (token: string) => {
-        const response = await fetch('/api/room', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'resume-private', inviteToken: token }),
-        });
-        return response.ok ? await response.json() as unknown : null;
-    };
-
-    void (async () => {
-        try {
-            if (inviteToken) {
-                const resumedSession = await resumePrivateSession(inviteToken);
-                if (resumedSession) {
-                    connectSession(resumedSession);
-                    store.setLocalSession({ pairingState: 'joining', pairingError: null });
-                    return;
-                }
-                onlinePrivateJoin = async (pin: string) => {
-                    try {
-                        const response = await fetch('/api/room', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'join-private', inviteToken, pin }),
-                        });
-                        const session: unknown = await response.json();
-                        if (!response.ok) {
-                            const message = isRecord(session) && typeof session.error === 'string' ? session.error : 'Could not join the private room.';
-                            throw new Error(message);
-                        }
-                        connectSession(session);
-                        store.setLocalSession({ pairingState: 'joining', pairingError: null });
-                        onlinePrivateJoin = null;
-                    } catch (error) {
-                        showError(error, 'Could not join the private room.');
-                    }
-                };
-                return;
-            }
-
-            if (createPrivate) {
-                const savedInvite = localStorage.getItem(ONLINE_PRIVATE_HOST_KEY);
-                if (savedInvite) {
-                    const resumedSession = await resumePrivateSession(savedInvite);
-                    if (isRecord(resumedSession) && typeof resumedSession.pin === 'string') {
-                        const shareUrl = `${window.location.origin}/?invite=${encodeURIComponent(savedInvite)}`;
-                        store.setLocalSession({
-                            localRole: 'host',
-                            localRoomPrivacy: 'private',
-                            pairingCode: resumedSession.pin,
-                            shareUrl,
-                            pairingState: 'hosting',
-                            pairingError: null,
-                        });
-                        connectSession(resumedSession);
-                        return;
-                    }
-                    localStorage.removeItem(ONLINE_PRIVATE_HOST_KEY);
-                }
-                const response = await fetch('/api/room', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'create-private' }),
-                });
-                const session: unknown = await response.json();
-                if (!response.ok || !isRecord(session) || typeof session.pin !== 'string' || typeof session.inviteToken !== 'string') {
-                    throw new Error('Could not create the private room.');
-                }
-                localStorage.setItem(ONLINE_PRIVATE_HOST_KEY, session.inviteToken);
-                const shareUrl = `${window.location.origin}/?invite=${encodeURIComponent(session.inviteToken)}`;
-                store.setLocalSession({
-                    localRole: 'host',
-                    localRoomPrivacy: 'private',
-                    pairingCode: session.pin,
-                    shareUrl,
-                    pairingState: 'hosting',
-                    pairingError: null,
-                });
-                connectSession(session);
-                return;
-            }
-
-            let session: unknown = null;
-            if (window.location.hostname === 'cboard.basharramadan.com') {
-                try {
-                    const discoveryResponse = await fetch('https://cboard-red.vercel.app/api/room', {
-                        cache: 'no-store',
-                        credentials: 'omit',
-                    });
-                    const discovery: unknown = await discoveryResponse.json();
-                    if (!discoveryResponse.ok || !isRecord(discovery) || typeof discovery.networkToken !== 'string') {
-                        throw new Error('Network check failed.');
-                    }
-                    const joinResponse = await fetch('/api/room', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'join-public-network', networkToken: discovery.networkToken }),
-                    });
-                    session = await joinResponse.json();
-                    if (!joinResponse.ok) throw new Error('Network room authorization failed.');
-                } catch {
-                    store.addDebugLog('IPv4 network check unavailable; using the direct connection address.');
-                }
-            }
-            if (!session) {
-                const response = await fetch('/api/room', { cache: 'no-store' });
-                if (!response.ok) throw new Error('Could not create the public room.');
-                session = await response.json();
-            }
-            connectSession(session);
-        } catch (error) {
-            showError(error, 'Online room is unavailable.');
-        }
-    })();
-
-    return () => {
-        onlinePrivateJoin = null;
-        onlineChannelInstance?.unbind_all();
-        if (pusher && roomName) pusher.unsubscribe(roomName);
-        onlineChannelInstance = null;
-    };
+export function leavePrivateRoom() {
+    stopRuntime('private');
+    localStorage.removeItem(ONLINE_PRIVATE_CODE_KEY);
+    localStorage.removeItem(ONLINE_PRIVATE_ROLE_KEY);
+    updateRoom('private', { myId: null, peers: [], role: null, shareUrl: null,
+        connectionState: 'disconnected', pairingState: 'connecting', error: null });
+    useBoardStore.getState().setActiveRoom('public');
+    window.history.replaceState({}, '', '/');
 }
 
 export function useBoardNetworkInit() {
     useEffect(() => {
+        initActive = true;
         const store = useBoardStore.getState();
-        let active = true;
-        store.setConnectionState('connecting');
         store.removeExpiredItems();
-
         const mode = getNetworkMode(window.location.hostname);
-        const cleanupConnection = mode === 'local'
-            ? startLocalConnection(() => active)
-            : startOnlineConnection(() => active);
+        store.setLocalSession({ networkMode: mode });
+        if (mode === 'local') startLocalConnections(); else startOnlineConnections();
         const cleanupInterval = window.setInterval(() => store.removeExpiredItems(), 60_000);
-
         return () => {
-            active = false;
+            initActive = false;
             window.clearInterval(cleanupInterval);
-            cleanupConnection();
-            webrtcInstance?.cleanup();
-            webrtcInstance = null;
-            webrtcOwnerId = null;
-            webSocketInstance = null;
-            signalSender = null;
-            store.setConnectionState('disconnected');
+            stopRuntime('public');
+            stopRuntime('private');
         };
     }, []);
 }
@@ -737,76 +478,46 @@ export function useBoardNetworkInit() {
 export function useBoardNetwork() {
     const sharePost = async (text: string, files: File[]) => {
         const store = useBoardStore.getState();
+        const scope = store.localRoomPrivacy;
+        const runtime = runtimes[scope];
         const cleanText = text.trim().slice(0, MAX_TEXT_LENGTH);
         const safeFiles = files.slice(0, MAX_FILES).filter((file) => file.size <= MAX_FILE_SIZE);
-
-        if (!webrtcInstance || store.peers.length === 0) {
-            toast.error('Connect another device before sharing.');
+        if (!runtime || !runtime.peers.size) {
+            toast.error(`Connect another device to the ${scope === 'public' ? 'Public' : 'Private'} room first.`);
             return false;
         }
-        if (!cleanText && safeFiles.length === 0) return false;
+        if (!cleanText && !safeFiles.length) return false;
         if (files.length > MAX_FILES || safeFiles.length !== files.length) {
             toast.error('Use up to 10 files, with a maximum of 50 MB per file.');
             return false;
         }
-
         const itemId = generateId();
-        const attachments = safeFiles.map((file) => ({
-            id: generateId(),
-            fileName: file.name.slice(0, 255),
-            fileSize: file.size,
-            mimeType: file.type.slice(0, 100),
-            fileData: URL.createObjectURL(file),
-        }));
-        const item: SharedItem = {
-            id: itemId,
-            type: attachments.length > 0 ? 'post' : 'text',
-            content: cleanText,
-            scope: store.localRoomPrivacy === 'private' ? 'private' : 'public',
-            attachments: attachments.length > 0 ? attachments : undefined,
-            senderId: store.myId || '',
-            timestamp: Date.now(),
-            expiresAt: Date.now() + 15 * 60 * 1000,
-        };
-
+        const attachments = safeFiles.map((file) => ({ id: generateId(), fileName: file.name.slice(0, 255),
+            fileSize: file.size, mimeType: file.type.slice(0, 100), fileData: URL.createObjectURL(file) }));
+        const item: SharedItem = { id: itemId, type: attachments.length ? 'post' : 'text', content: cleanText,
+            scope, attachments: attachments.length ? attachments : undefined, senderId: runtime.myId,
+            timestamp: Date.now(), expiresAt: Date.now() + 15 * 60 * 1000 };
         store.addItem(item);
-        await webrtcInstance.broadcast(JSON.stringify({
-            type: item.type,
-            item: {
-                ...item,
-                attachments: item.attachments?.map((attachment) => ({ ...attachment, fileData: undefined })),
-            },
-        }));
-
+        await runtime.rtc.broadcast(JSON.stringify({ type: item.type, item: { ...item,
+            attachments: item.attachments?.map((attachment) => ({ ...attachment, fileData: undefined })) } }));
         for (let index = 0; index < safeFiles.length; index += 1) {
             const file = safeFiles[index];
             const attachment = attachments[index];
             const buffer = await file.arrayBuffer();
             const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
-
-            await webrtcInstance.broadcast(JSON.stringify({
-                type: 'file-start',
-                fileId: attachment.id,
-                itemId,
-                fileName: attachment.fileName,
-                fileSize: attachment.fileSize,
-                mimeType: attachment.mimeType,
-                totalChunks,
-            }));
-
+            await runtime.rtc.broadcast(JSON.stringify({ type: 'file-start', fileId: attachment.id, itemId,
+                fileName: attachment.fileName, fileSize: attachment.fileSize, mimeType: attachment.mimeType, totalChunks }));
             const idBytes = new TextEncoder().encode(attachment.id.padEnd(ID_LENGTH, ' ').slice(0, ID_LENGTH));
             for (let offset = 0; offset < buffer.byteLength; offset += CHUNK_SIZE) {
                 const chunk = new Uint8Array(buffer.slice(offset, offset + CHUNK_SIZE));
                 const message = new Uint8Array(ID_LENGTH + chunk.length);
                 message.set(idBytes, 0);
                 message.set(chunk, ID_LENGTH);
-                await webrtcInstance.broadcast(message.buffer);
+                await runtime.rtc.broadcast(message.buffer);
             }
-            await webrtcInstance.broadcast(JSON.stringify({ type: 'file-complete', fileId: attachment.id }));
+            await runtime.rtc.broadcast(JSON.stringify({ type: 'file-complete', fileId: attachment.id }));
         }
-
-        const totalFileSize = safeFiles.reduce((total, file) => total + file.size, 0);
-        if (totalFileSize <= 3 * 1024 * 1024) {
+        if (safeFiles.reduce((total, file) => total + file.size, 0) <= 3 * 1024 * 1024) {
             for (const attachment of attachments) {
                 if (!attachment.fileData) continue;
                 const dataUri = await blobUrlToDataUri(attachment.fileData);
@@ -822,11 +533,10 @@ export function useBoardNetwork() {
     const deleteItem = async (itemId: string) => {
         const store = useBoardStore.getState();
         if (!isSafeId(itemId)) return;
+        const target = store.items.find((item) => item.id === itemId);
         store.deleteItem(itemId);
-        if (webrtcInstance && store.peers.length > 0) {
-            await webrtcInstance.broadcast(JSON.stringify({ type: 'delete', itemId }));
-        }
+        const runtime = runtimes[target?.scope || 'public'];
+        if (runtime?.peers.size) await runtime.rtc.broadcast(JSON.stringify({ type: 'delete', itemId }));
     };
-
     return { sharePost, deleteItem };
 }

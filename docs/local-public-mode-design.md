@@ -1,37 +1,13 @@
-# Local Public Mode Design
+# Local Mode
 
-## Understanding
+- One laptop runs CBoard and opens it as the Host.
+- One Receiver opens the Host's local address on the same router.
+- Internet is not required.
+- Public opens from the main local address.
+- Private opens from the short secret link shown to the Host.
+- Both rooms remain connected while the user changes tabs.
+- Text and files move browser-to-browser and expire after 15 minutes.
 
-- CBoard works on a local router even when that router has no internet.
-- One device runs the CBoard web server and opens the board as the Host.
-- One other device opens the Host's local address as the Receiver.
-- Both people use normal web browsers; no cloud account is needed.
-- Text and files stay on the local network and move peer-to-peer.
-- Shared items expire after 15 minutes and files are limited to 50 MB.
+The local server only coordinates the connection. It checks the page origin, limits signaling message size, allows one Host and one Receiver per room, and never stores shared content.
 
-## Assumptions
-
-- The Host device stays awake and keeps the local CBoard server running.
-- The first browser connected becomes the Host; only one Receiver may join.
-- The Host chooses an open Public room or a PIN-locked Private room.
-- The server only coordinates the connection. Shared content is not stored by it.
-- Modern desktop and mobile browsers with WebRTC support are the initial target.
-
-## Chosen Design
-
-The Next.js app runs through a small local Node.js server bound to the local network. A WebSocket endpoint handles local connection setup without internet. The first browser becomes the Host and receives the local share address. The Host can leave the room Public or protect it with a random PIN. WebRTC carries text and files directly between the two browsers.
-
-The server limits the room to two approved devices, limits failed PIN attempts, validates every signaling message, limits message size, checks request origins, and sends browser security headers. The client also validates incoming messages and files before adding them to the board.
-
-## Decision Log
-
-| Decision | Alternatives | Reason |
-|---|---|---|
-| Local Node.js web server | Internet signaling, desktop background app, QR-only pairing | Meets the zero-internet and fully-web requirements. |
-| Host plus one Receiver | Multi-device mesh | Matches the requested simple workflow and reduces risk. |
-| Public or PIN pairing | QR exchange | Supports quick open sharing and a protected option. |
-| WebRTC for content | Relay content through the server | Keeps files and text directly between browsers. |
-
-## Known Constraint
-
-If the local server stops, the Host device sleeps, or the Host leaves the network, new connections are impossible and the current session ends.
+If the Host laptop sleeps, the server stops, or the Host browser closes, sharing ends until it is reopened.

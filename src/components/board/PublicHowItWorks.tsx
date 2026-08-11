@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Wifi, MonitorSmartphone, Globe, KeyRound, Clock, Zap } from 'lucide-react';
+import { Wifi, MonitorSmartphone, Globe, Lock, Clock, Zap } from 'lucide-react';
 import { useBoardStore } from '@/store/useBoardStore';
 
 const localSteps = [
@@ -13,9 +13,9 @@ const localSteps = [
         accentBg: 'bg-blue-500/10 dark:bg-blue-500/20',
     },
     {
-        icon: KeyRound,
-        title: 'Choose Public or Private',
-        description: 'Public opens automatically. Private asks the Receiver for the Host PIN.',
+        icon: Lock,
+        title: 'Choose a room',
+        description: 'Public opens automatically. Private uses a short, secret link.',
         accent: 'from-violet-500 to-purple-400',
         accentBg: 'bg-violet-500/10 dark:bg-violet-500/20',
     },
@@ -53,14 +53,14 @@ const onlineSteps = [
 ];
 
 const localFeatures = [
-    { icon: KeyRound, label: 'Public or private', sublabel: 'Optional PIN protection' },
+    { icon: Lock, label: 'Public and private', sublabel: 'Separate live rooms' },
     { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
     { icon: Zap, label: 'Local only', sublabel: 'Works without internet' },
 ];
 
 const onlineFeatures = [
     { icon: Globe, label: 'Public room', sublabel: 'Automatic on one network' },
-    { icon: Clock, label: 'Auto-expire', sublabel: 'Items vanish after 15 min' },
+    { icon: Lock, label: 'Private room', sublabel: 'Short secret link' },
     { icon: Zap, label: 'Peer-to-peer', sublabel: 'Content avoids the cloud' },
 ];
 
@@ -102,7 +102,7 @@ export function PublicHowItWorks({ className }: { className?: string }) {
                 <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base mt-3 max-w-md mx-auto leading-relaxed">
                     {online
                         ? 'Open CBoard on two devices using the same internet connection.'
-                        : 'Host a public or PIN-locked board on your local network, even without internet.'}
+                        : 'Host Public and Private rooms on your local network, even without internet.'}
                 </p>
             </motion.div>
 

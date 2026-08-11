@@ -1,7 +1,6 @@
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPusherServer } from '@/lib/pusher';
-import { getClientIp, getRoomName, verifyRoomAccess, verifyUserId } from '@/lib/server-utils';
+import { verifyRoomAccess } from '@/lib/server-utils';
 
 export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin');
@@ -29,35 +28,23 @@ export async function POST(request: NextRequest) {
     }
     const socketId = form.get('socket_id');
     const channelName = form.get('channel_name');
+    const accessToken = form.get('access_token');
     if (typeof socketId !== 'string'
         || !/^\d+\.\d+$/.test(socketId)
         || typeof channelName !== 'string'
+        || typeof accessToken !== 'string'
         || channelName.length > 128) {
         return NextResponse.json({ error: 'Invalid authorization request.' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const token = cookieStore.get('user_id_token')?.value;
-    const userId = token ? verifyUserId(token) : null;
-    if (!userId) {
-        return NextResponse.json({ error: 'Start a board session first.' }, { status: 401 });
-    }
-
-    const roomToken = cookieStore.get('room_access_token')?.value;
-    const access = roomToken ? verifyRoomAccess(roomToken) : null;
-    const hasSignedRoomAccess = access?.roomName === channelName && access.userId === userId;
-    if (channelName.startsWith('presence-private-') && !hasSignedRoomAccess) {
-        return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
-    }
-    if (!channelName.startsWith('presence-private-')
-        && !hasSignedRoomAccess
-        && channelName !== getRoomName(getClientIp(request))) {
+    const access = verifyRoomAccess(accessToken);
+    if (!access || access.roomName !== channelName) {
         return NextResponse.json({ error: 'Room access denied.' }, { status: 403 });
     }
 
     try {
         const auth = getPusherServer().authorizeChannel(socketId, channelName, {
-            user_id: userId,
+            user_id: access.userId,
             user_info: { joinedAt: Date.now() },
         });
         return NextResponse.json(auth);

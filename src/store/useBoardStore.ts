@@ -5,7 +5,27 @@ export type SharedItemType = 'text' | 'file' | 'post';
 export type LocalRole = 'host' | 'receiver';
 export type NetworkMode = 'local' | 'online';
 export type LocalRoomPrivacy = 'public' | 'private';
-export type PairingState = 'connecting' | 'hosting' | 'needs-pin' | 'joining' | 'paired' | 'room-full' | 'error';
+export type PairingState = 'connecting' | 'hosting' | 'joining' | 'paired' | 'room-full' | 'error';
+
+export interface RoomSessionState {
+    myId: string | null;
+    connectionState: 'disconnected' | 'connecting' | 'connected';
+    peers: string[];
+    role: LocalRole | null;
+    shareUrl: string | null;
+    pairingState: PairingState;
+    error: string | null;
+}
+
+const emptyRoomSession = (): RoomSessionState => ({
+    myId: null,
+    connectionState: 'connecting',
+    peers: [],
+    role: null,
+    shareUrl: null,
+    pairingState: 'connecting',
+    error: null,
+});
 
 export interface SharedAttachment {
     id: string;
@@ -52,10 +72,10 @@ interface BoardState {
     networkMode: NetworkMode | null;
     localRoomPrivacy: LocalRoomPrivacy;
     localRole: LocalRole | null;
-    pairingCode: string | null;
     shareUrl: string | null;
     pairingState: PairingState;
     pairingError: string | null;
+    roomSessions: Record<LocalRoomPrivacy, RoomSessionState>;
 
     // Board Data
     items: SharedItem[];
@@ -66,7 +86,11 @@ interface BoardState {
     setMyId: (id: string) => void;
     setConnectionState: (state: 'disconnected' | 'connecting' | 'connected') => void;
     setRoomCode: (code: string) => void;
-    setLocalSession: (session: Partial<Pick<BoardState, 'networkMode' | 'localRoomPrivacy' | 'localRole' | 'pairingCode' | 'shareUrl' | 'pairingState' | 'pairingError'>>) => void;
+    setLocalSession: (session: Partial<Pick<BoardState, 'networkMode' | 'localRoomPrivacy' | 'localRole' | 'shareUrl' | 'pairingState' | 'pairingError'>>) => void;
+    setActiveRoom: (room: LocalRoomPrivacy) => void;
+    setRoomSession: (room: LocalRoomPrivacy, session: Partial<RoomSessionState>) => void;
+    addRoomPeer: (room: LocalRoomPrivacy, peerId: string) => void;
+    removeRoomPeer: (room: LocalRoomPrivacy, peerId: string) => void;
 
     addPeer: (peerId: string) => void;
     removePeer: (peerId: string) => void;
@@ -97,10 +121,10 @@ export const useBoardStore = create<BoardState>()(
             networkMode: null,
             localRoomPrivacy: 'public',
             localRole: null,
-            pairingCode: null,
             shareUrl: null,
             pairingState: 'connecting',
             pairingError: null,
+            roomSessions: { public: emptyRoomSession(), private: emptyRoomSession() },
             items: [],
             incomingFiles: {},
             debugLogs: [],
@@ -109,6 +133,50 @@ export const useBoardStore = create<BoardState>()(
             setConnectionState: (state) => set({ connectionState: state }),
             setRoomCode: (code) => set({ roomCode: code }),
             setLocalSession: (session) => set(session),
+            setActiveRoom: (room) => set((state) => {
+                const session = state.roomSessions[room];
+                return {
+                    localRoomPrivacy: room,
+                    myId: session.myId,
+                    connectionState: session.connectionState,
+                    peers: session.peers,
+                    localRole: session.role,
+                    shareUrl: session.shareUrl,
+                    pairingState: session.pairingState,
+                    pairingError: session.error,
+                };
+            }),
+            setRoomSession: (room, session) => set((state) => {
+                const next = { ...state.roomSessions[room], ...session };
+                return {
+                    roomSessions: { ...state.roomSessions, [room]: next },
+                    ...(state.localRoomPrivacy === room ? {
+                        myId: next.myId,
+                        connectionState: next.connectionState,
+                        peers: next.peers,
+                        localRole: next.role,
+                        shareUrl: next.shareUrl,
+                        pairingState: next.pairingState,
+                        pairingError: next.error,
+                    } : {}),
+                };
+            }),
+            addRoomPeer: (room, peerId) => set((state) => {
+                const current = state.roomSessions[room];
+                const peers = current.peers.includes(peerId) ? current.peers : [...current.peers, peerId];
+                return {
+                    roomSessions: { ...state.roomSessions, [room]: { ...current, peers } },
+                    ...(state.localRoomPrivacy === room ? { peers } : {}),
+                };
+            }),
+            removeRoomPeer: (room, peerId) => set((state) => {
+                const current = state.roomSessions[room];
+                const peers = current.peers.filter((id) => id !== peerId);
+                return {
+                    roomSessions: { ...state.roomSessions, [room]: { ...current, peers } },
+                    ...(state.localRoomPrivacy === room ? { peers } : {}),
+                };
+            }),
 
             addPeer: (peerId) => set((state) => ({
                 peers: state.peers.includes(peerId) ? state.peers : [...state.peers, peerId]
