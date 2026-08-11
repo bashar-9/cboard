@@ -32,9 +32,15 @@ export async function GET(request: Request) {
         const ip = getClientIp(request);
         const roomName = getRoomName(ip);
         const userId = crypto.randomUUID().slice(0, 16);
+        const networkToken = createPrivateInvite(roomName, '000000', 10 * 60 * 1000);
 
-        const response = NextResponse.json({ roomName, userId });
+        const response = NextResponse.json({ roomName, userId, networkToken });
         response.headers.set('Cache-Control', 'no-store');
+        const origin = request.headers.get('origin');
+        if (origin === 'https://cboard.basharramadan.com' || origin === 'https://cboard-red.vercel.app') {
+            response.headers.set('Access-Control-Allow-Origin', origin);
+            response.headers.set('Vary', 'Origin');
+        }
         setIdentityCookie(response, userId, true);
         return response;
     } catch (error) {
@@ -87,6 +93,19 @@ export async function POST(request: Request) {
             }
             userId = crypto.randomUUID().slice(0, 16);
             const response = NextResponse.json({ roomName: invite.roomName, userId, pin: invite.pin, inviteToken: input.inviteToken });
+            response.headers.set('Cache-Control', 'no-store');
+            setIdentityCookie(response, userId, true);
+            setPrivateRoomCookie(response, invite.roomName, userId);
+            return response;
+        }
+
+        if (input.action === 'join-public-network' && typeof input.networkToken === 'string') {
+            const invite = readPrivateInvite(input.networkToken);
+            if (!invite || !/^presence-room-[a-f0-9]{12}$/.test(invite.roomName)) {
+                return NextResponse.json({ error: 'Could not verify this network.' }, { status: 401 });
+            }
+            userId = crypto.randomUUID().slice(0, 16);
+            const response = NextResponse.json({ roomName: invite.roomName, userId });
             response.headers.set('Cache-Control', 'no-store');
             setIdentityCookie(response, userId, true);
             setPrivateRoomCookie(response, invite.roomName, userId);

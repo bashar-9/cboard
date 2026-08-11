@@ -39,7 +39,7 @@ function getSigningSecret() {
     return process.env.PUSHER_COOKIE_SECRET || process.env.PUSHER_SECRET || null;
 }
 
-const ACCESS_ROOM_PATTERN = /^presence-private-[a-f0-9]{32}$/;
+const ACCESS_ROOM_PATTERN = /^presence-(?:private-[a-f0-9]{32}|room-[a-f0-9]{12})$/;
 
 function hmac(value: string) {
     const secret = getSigningSecret();
@@ -103,14 +103,14 @@ export function verifyRoomAccess(token: string) {
     }
 }
 
-export function createPrivateInvite(roomName: string, pin: string) {
+export function createPrivateInvite(roomName: string, pin: string, lifetimeMs = 12 * 60 * 60 * 1000) {
     if (!ACCESS_ROOM_PATTERN.test(roomName) || !/^\d{6}$/.test(pin)) throw new Error('Invalid room details.');
     const secret = getSigningSecret();
     if (!secret) throw new Error('Pusher cookie signing secret is not configured.');
     const key = crypto.createHash('sha256').update(`${secret}:private-invite`).digest();
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const payload = JSON.stringify({ roomName, pin, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
+    const payload = JSON.stringify({ roomName, pin, expiresAt: Date.now() + lifetimeMs });
     const encrypted = Buffer.concat([cipher.update(payload, 'utf8'), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64url');
 }

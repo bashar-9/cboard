@@ -662,9 +662,33 @@ function startOnlineConnection(isActive: () => boolean) {
                 return;
             }
 
-            const response = await fetch('/api/room', { cache: 'no-store' });
-            if (!response.ok) throw new Error('Could not create the public room.');
-            const session: unknown = await response.json();
+            let session: unknown = null;
+            if (window.location.hostname === 'cboard.basharramadan.com') {
+                try {
+                    const discoveryResponse = await fetch('https://cboard-red.vercel.app/api/room', {
+                        cache: 'no-store',
+                        credentials: 'omit',
+                    });
+                    const discovery: unknown = await discoveryResponse.json();
+                    if (!discoveryResponse.ok || !isRecord(discovery) || typeof discovery.networkToken !== 'string') {
+                        throw new Error('Network check failed.');
+                    }
+                    const joinResponse = await fetch('/api/room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'join-public-network', networkToken: discovery.networkToken }),
+                    });
+                    session = await joinResponse.json();
+                    if (!joinResponse.ok) throw new Error('Network room authorization failed.');
+                } catch {
+                    store.addDebugLog('IPv4 network check unavailable; using the direct connection address.');
+                }
+            }
+            if (!session) {
+                const response = await fetch('/api/room', { cache: 'no-store' });
+                if (!response.ok) throw new Error('Could not create the public room.');
+                session = await response.json();
+            }
             connectSession(session);
         } catch (error) {
             showError(error, 'Online room is unavailable.');

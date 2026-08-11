@@ -31,4 +31,11 @@ describe('signed online room access', () => {
         const roomName = `presence-private-${'b'.repeat(32)}`;
         expect(verifyRoomAccess(signRoomAccess(roomName, 'user-456'))).toEqual({ roomName, userId: 'user-456' });
     });
+
+    it('signs a short-lived automatic Public network room', () => {
+        const roomName = 'presence-room-123456789abc';
+        const token = createPrivateInvite(roomName, '000000', 60_000);
+        expect(readPrivateInvite(token)).toEqual({ roomName, pin: '000000' });
+        expect(verifyRoomAccess(signRoomAccess(roomName, 'user-789'))).toEqual({ roomName, userId: 'user-789' });
+    });
 });
