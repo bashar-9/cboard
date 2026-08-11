@@ -12,7 +12,10 @@ import { Toaster } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 
 export default function Home() {
-  const { items, myId, debugLogs, localRole } = useBoardStore();
+  const { items, myId, debugLogs, localRole, localRoomPrivacy, networkMode } = useBoardStore();
+  const activeItems = networkMode ? items.filter((item) => (
+    (item.scope === 'private' ? 'private' : 'public') === localRoomPrivacy
+  )) : [];
 
   useBoardNetworkInit();
 
@@ -30,12 +33,12 @@ export default function Home() {
 
           <LocalConnectionPanel />
 
-          {items.length === 0 ? (
+          {activeItems.length === 0 ? (
             <PublicHowItWorks key="public-guide" />
           ) : (
             <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
               <AnimatePresence mode="popLayout">
-                {items.map((item) => (
+                {activeItems.map((item) => (
                   <BoardItemCard key={item.id} item={item} />
                 ))}
               </AnimatePresence>

@@ -7,7 +7,6 @@
 - One other device opens the Host's local address as the Receiver.
 - Both people use normal web browsers; no cloud account is needed.
 - Text and files stay on the local network and move peer-to-peer.
-- The existing Supabase Private Mode remains in source control but is hidden and inactive.
 - Shared items expire after 15 minutes and files are limited to 50 MB.
 
 ## Assumptions
@@ -32,7 +31,6 @@ The server limits the room to two approved devices, limits failed PIN attempts, 
 | Host plus one Receiver | Multi-device mesh | Matches the requested simple workflow and reduces risk. |
 | Public or PIN pairing | QR exchange | Supports quick open sharing and a protected option. |
 | WebRTC for content | Relay content through the server | Keeps files and text directly between browsers. |
-| Hide cloud Private Mode | Delete it | Preserves the existing work for a future version. |
 
 ## Known Constraint
 

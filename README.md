@@ -13,8 +13,6 @@ CBoard shares text and files directly between browsers in two ways:
 - Refreshes and short connection drops reconnect automatically; Private room approval is remembered.
 - Items expire after 15 minutes. Files are limited to 50 MB each.
 
-The existing Supabase mode is preserved in the code but is hidden and inactive. Active modes make no Supabase calls.
-
 ## Vercel
 
 The online public room uses Pusher for connection setup. Keep these variables configured in Vercel:
@@ -58,7 +56,7 @@ npm run build
 - Same-origin WebSocket checks.
 - Strict signaling and incoming file validation.
 - Browser security headers.
-- Files and text are not uploaded to Pusher or Supabase.
+- Files and text are not uploaded to Pusher.
 - Pusher carries connection setup messages only in online mode.
 - Dependency audit currently reports zero known vulnerabilities.
 

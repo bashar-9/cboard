@@ -98,12 +98,12 @@ function isSafeItem(value: unknown): value is SharedItem {
             || (Array.isArray(attachments) && attachments.length <= MAX_FILES && attachments.every(isSafeAttachment)));
 }
 
-export function sanitizeIncomingItem(value: unknown): SharedItem | null {
+export function sanitizeIncomingItem(value: unknown, scope: 'public' | 'private' = 'public'): SharedItem | null {
     if (!isSafeItem(value)) return null;
     return {
         id: value.id,
         type: value.type,
-        scope: 'public',
+        scope,
         content: value.content,
         attachments: value.attachments?.map((attachment) => ({
             id: attachment.id,
@@ -236,7 +236,10 @@ function setupPeer(myId: string, peerId: string, polite: boolean) {
         };
 
         rtc.onChannelOpen = async (connectedPeerId) => {
-            const currentItems = useBoardStore.getState().items.slice(0, MAX_ITEMS_PER_SYNC);
+            const activeScope = useBoardStore.getState().localRoomPrivacy === 'private' ? 'private' : 'public';
+            const currentItems = useBoardStore.getState().items
+                .filter((item) => (item.scope === 'private' ? 'private' : 'public') === activeScope)
+                .slice(0, MAX_ITEMS_PER_SYNC);
             if (currentItems.length === 0) return;
 
             const safeMetadata = currentItems.map((item) => ({
@@ -256,6 +259,7 @@ function setupPeer(myId: string, peerId: string, polite: boolean) {
 
 function handleIncomingData(data: unknown) {
     const store = useBoardStore.getState();
+    const activeScope = store.localRoomPrivacy === 'private' ? 'private' : 'public';
 
     try {
         if (typeof data === 'string') {
@@ -264,7 +268,7 @@ function handleIncomingData(data: unknown) {
             if (!isRecord(payload) || typeof payload.type !== 'string') return;
 
             if (payload.type === 'text' || payload.type === 'post') {
-                const safeItem = sanitizeIncomingItem(payload.item);
+                const safeItem = sanitizeIncomingItem(payload.item, activeScope);
                 if (safeItem) store.addItem(safeItem);
                 return;
             }
@@ -272,7 +276,7 @@ function handleIncomingData(data: unknown) {
             if (payload.type === 'sync' && Array.isArray(payload.items)) {
                 const safeItems = payload.items
                     .slice(0, MAX_ITEMS_PER_SYNC)
-                    .map(sanitizeIncomingItem)
+                    .map((item) => sanitizeIncomingItem(item, activeScope))
                     .filter((item): item is SharedItem => item !== null);
                 store.addItems(safeItems);
                 return;
@@ -758,6 +762,7 @@ export function useBoardNetwork() {
             id: itemId,
             type: attachments.length > 0 ? 'post' : 'text',
             content: cleanText,
+            scope: store.localRoomPrivacy === 'private' ? 'private' : 'public',
             attachments: attachments.length > 0 ? attachments : undefined,
             senderId: store.myId || '',
             timestamp: Date.now(),

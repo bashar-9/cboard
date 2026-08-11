@@ -163,7 +163,7 @@ export function ShareInput() {
                         rows={1}
                         className="flex-1 resize-none border-0 bg-transparent py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none leading-relaxed min-h-[44px] max-h-[120px]"
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                                 e.preventDefault();
                                 void handleShare();
                             }
@@ -175,7 +175,7 @@ export function ShareInput() {
                         onClick={() => void handleShare()}
                         disabled={(!inputText.trim() && selectedFiles.length === 0) || connectionState !== 'connected' || isSharing}
                         className="h-10 w-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white cursor-pointer transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:shadow-none shrink-0 mr-1 mb-1 p-0"
-                        title="Share (⌘ + Enter)"
+                        title="Send (Enter)"
                     >
                         <Send className="w-4 h-4" />
                     </Button>
@@ -183,7 +183,7 @@ export function ShareInput() {
 
                 {/* Subtle hint */}
                 <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 mt-1.5 select-none">
-                    Drop files or press ⌘ + Enter to share
+                    Enter to send · Shift + Enter for a new line
                 </p>
             </div>
         </div>

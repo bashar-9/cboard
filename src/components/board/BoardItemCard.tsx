@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useBoardNetwork } from '@/hooks/useBoardNetwork';
-import { deletePrivateItemFromDb } from '@/hooks/usePrivateNetwork';
 import { useBoardStore, SharedItem } from '@/store/useBoardStore';
 import { Button } from '@/components/ui/button';
 import { Copy, Clock, Timer, Trash2, CheckCircle2, Download, File as FileIcon, Lock } from 'lucide-react';
@@ -50,12 +49,8 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
-    const handleDelete = (id: string, scope?: string) => {
-        if (scope === 'private') {
-            deletePrivateItemFromDb(id);
-        } else {
-            deleteItem(id);
-        }
+    const handleDelete = (id: string) => {
+        deleteItem(id);
         toast.success('Item deleted');
     };
 
@@ -99,7 +94,7 @@ export function BoardItemCard({ item }: BoardItemCardProps) {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer transition-all duration-200"
-                                onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.scope); }}
+                                onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
                                 title="Delete"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />

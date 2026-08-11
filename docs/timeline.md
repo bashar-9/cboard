@@ -12,13 +12,13 @@
 
 | Date | Milestone | Details |
 |------|-----------|---------|
+| 2026-08-11 | Legacy Cloud Removal | Removed the unused database/authentication integration, packages, routes, state, and environment settings. |
 | 2026-08-10 | Automatic Public Room | Restored same-domain, same-network Public joining without a room link. Private keeps its link and PIN. |
 | 2026-08-10 | Exact Public Links | Added a Public room link so IPv4/IPv6 differences cannot leave devices waiting in separate rooms. |
 | 2026-08-10 | Reconnect Safety | Preserved room identity and PIN approval across refreshes and short connection drops. |
-| 2026-08-10 | Online Private Rooms | Added expiring private invite links, six-digit PIN checks, attempt limits, and phone-first waiting without Supabase. |
+| 2026-08-10 | Online Private Rooms | Added expiring private invite links, six-digit PIN checks, attempt limits, and phone-first waiting. |
 | 2026-08-10 | Hybrid Architecture | Kept Vercel/Pusher public rooms and added a local Host + one Receiver WebSocket path for offline routers. |
 | 2026-08-10 | Secure Pairing | Added local Public and PIN-locked Private rooms, attempt lockout, origin checks, signaling limits, and third-device rejection. |
-| 2026-08-10 | Public Mode Focus | Hid and disabled Supabase Private Mode without deleting its implementation. |
 | 2026-08-10 | Transfer Hardening | Added message/file validation, 50 MB limits, incomplete-file rejection, and WebRTC buffer control. |
 | 2026-08-10 | Quality Baseline | Lint, TypeScript, tests, production build, Host/Receiver simulation, and dependency audit pass. |
 | 2026-02-20 | Architecture Finalized | Chose WebRTC (P2P) + Pusher signaling + Next.js App Router + Tailwind/Shadcn. See `documentation.md`. |
@@ -42,12 +42,9 @@
 | 2026-02-21 | Feature | Added global "Delete Item" functionality broadcasting across the WebRTC network. |
 | 2026-02-21 | Bug Fix | Fixed cross-browser sync and file persistence (base64 data URI conversion, proper data channel timing). |
 | 2026-02-21 | UI/UX | Mobile Responsiveness completed (layout looks perfect on mobile devices). |
-| 2026-02-21 | Feature | v2: Private Sync Mode implemented using Supabase Realtime Database. Redesigned Auth Page built. |
 | 2026-02-21 | Integration | Google OAuth configured properly complete with API callback route exchanging the code for a browser session. |
 | 2026-02-21 | UI/UX | Refactored `HowItWorks` onboarding into `PublicHowItWorks` and `PrivateHowItWorks` to fix staggered animation variants and CSS overflow layout bugs. Built new tabbed onboarding modal in `Header.tsx`. |
-| 2026-02-21 | Security | Migrated entirely away from legacy Supabase `ANON_KEY` to modern `PUBLISHABLE_KEY` patterns across SSR, Middleware, and Client configurations for security and rotation support. |
 | 2026-02-21 | Bug Fix | Resolved Production Login Redirect loop by implementing standard Next.js `new URL(request.url)` parsing inside the `auth/callback` route, ensuring OAuth tokens are sent to Vercel domains correctly. |
-| 2026-02-21 | Bug Fix | Diagnosed missing Realtime `DELETE` propagation for Private Mode. Used Supabase MCP to remotely run `ALTER TABLE private_items REPLICA IDENTITY FULL`, fixing RLS filter webhook drops instantly. |
 | 2026-02-21 | Bug Fix | Fixed Masonry Grid layout bug where empty states triggered a `justify-center` flex collapse by decoupling grid loading from generic item states, restoring "Google Keep" style masonry anchoring. |
 | 2026-02-21 | Optimization | Implemented instant 'Optimistic' UI Updates for sending and deleting Private Items so the UI reflects changes instantly before the websocket response fires. |
 

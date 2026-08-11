@@ -29,6 +29,11 @@ describe('incoming peer data security', () => {
         });
     });
 
+    test('assigns incoming content to the active room type', () => {
+        expect(sanitizeIncomingItem(validItem, 'private')?.scope).toBe('private');
+        expect(sanitizeIncomingItem(validItem, 'public')?.scope).toBe('public');
+    });
+
     test('rejects files larger than 50 MB', () => {
         const result = sanitizeIncomingItem({
             ...validItem,
